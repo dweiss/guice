@@ -19,8 +19,6 @@ package com.google.inject.internal.aop;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
 import java.util.logging.Logger;
 
 /**
@@ -34,7 +32,7 @@ final class ChildClassDefiner implements ClassDefiner {
 
   // initialization-on-demand...
   private static class SystemChildLoaderHolder {
-    static final ChildLoader SYSTEM_CHILD_LOADER = doPrivileged(ChildLoader::new);
+    static final ChildLoader SYSTEM_CHILD_LOADER = new ChildLoader();
   }
 
   // initialization-on-demand...
@@ -58,15 +56,10 @@ final class ChildClassDefiner implements ClassDefiner {
     return childLoader.defineInChild(bytecode);
   }
 
-  /** Utility method to remove doPrivileged ambiguity */
-  static <T> T doPrivileged(PrivilegedAction<T> action) {
-    return AccessController.doPrivileged(action);
-  }
-
   /** Creates a child loader for the given host loader */
   static ChildLoader childLoader(ClassLoader hostLoader) {
     logger.fine("Creating a child loader for " + hostLoader);
-    return doPrivileged(() -> hostLoader == null ? new ChildLoader() : new ChildLoader(hostLoader));
+    return hostLoader == null ? new ChildLoader() : new ChildLoader(hostLoader);
   }
 
   /** Custom class loader that grants access to defineClass */

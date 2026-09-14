@@ -32,7 +32,7 @@ See the Apache License Version 2.0 for the specific language governing permissio
   <name>Google Guice</name>
 
   <description>
-    Guice is a lightweight dependency injection framework for Java 11 and above
+    Guice is a lightweight dependency injection framework for Java 25 and above
   </description>
 
   <url>https://github.com/google/guice</url>
@@ -152,7 +152,7 @@ See the Apache License Version 2.0 for the specific language governing permissio
       <dependency>
         <groupId>org.ow2.asm</groupId>
         <artifactId>asm</artifactId>
-        <version>9.5</version>
+        <version>9.8</version>
       </dependency>
       <dependency>
         <groupId>org.jspecify</groupId>
@@ -270,13 +270,13 @@ See the Apache License Version 2.0 for the specific language governing permissio
           </executions>
         </plugin>
         <!--
-         | Make sure we only use Java11 methods
+         | Make sure we only use Java25 methods
         -->
         <plugin>
           <artifactId>maven-compiler-plugin</artifactId>
           <version>3.11.0</version>
           <configuration>
-            <release>11</release>
+            <release>25</release>
             <compilerArgs>
               <arg>-parameters</arg>
             </compilerArgs>
@@ -326,7 +326,7 @@ See the Apache License Version 2.0 for the specific language governing permissio
               <Bundle-DocURL>https://github.com/google/guice</Bundle-DocURL>
               <Bundle-Name>${project.artifactId}</Bundle-Name>
               <Bundle-SymbolicName>$(module)</Bundle-SymbolicName>
-              <Bundle-RequiredExecutionEnvironment>JavaSE-11</Bundle-RequiredExecutionEnvironment>
+              <Bundle-RequiredExecutionEnvironment>JavaSE-25</Bundle-RequiredExecutionEnvironment>
               <Import-Package>!com.google.inject.*,!javax.annotation,*</Import-Package>
               <_exportcontents>!*.internal.*,$(module).*;version=${guice.api.version}</_exportcontents>
               <_consumer-policy>$(version;==;$(@))</_consumer-policy>
@@ -376,7 +376,7 @@ See the Apache License Version 2.0 for the specific language governing permissio
           <version>3.2.0</version>
           <configuration>
             <doclint>html,syntax</doclint>
-            <source>11</source>
+            <source>25</source>
             <author>false</author>
             <protected>true</protected>
             <links>

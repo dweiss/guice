@@ -71,7 +71,7 @@ public final class ClassBuilding {
 
   /** Returns true if the given member can be enhanced using bytecode. */
   public static boolean canEnhance(Executable member) {
-    return canAccess(member, hasPackageAccess());
+    return canAccess(member, hasPackageAccess(member.getDeclaringClass()));
   }
 
   /** Builder of enhancers that provide method interception via bytecode generation. */
@@ -140,7 +140,7 @@ public final class ClassBuilding {
     Deque<Class<?>[]> interfaceStack = new ArrayDeque<>();
 
     // only try to match package-private methods if the class-definer has package-access
-    String hostPackage = hasPackageAccess() ? packageName(hostClass.getName()) : null;
+    String hostPackage = hasPackageAccess(hostClass) ? packageName(hostClass.getName()) : null;
 
     for (Class<?> clazz = hostClass;
         clazz != Object.class && clazz != null;
@@ -224,7 +224,7 @@ public final class ClassBuilding {
   /** Returns true if the given member can be fast-invoked. */
   public static boolean canFastInvoke(Executable member) {
     int modifiers = member.getModifiers() & (PUBLIC | PRIVATE);
-    if (hasPackageAccess()) {
+    if (hasPackageAccess(member.getDeclaringClass())) {
       // can fast-invoke anything except private members
       return modifiers != PRIVATE;
     }
@@ -257,7 +257,7 @@ public final class ClassBuilding {
 
   /** Visit all constructors for the host class that can be fast-invoked. */
   private static void visitFastConstructors(Class<?> hostClass, Consumer<Constructor<?>> visitor) {
-    if (hasPackageAccess()) {
+    if (hasPackageAccess(hostClass)) {
       // can fast-invoke all non-private constructors
       visitMembers(hostClass.getDeclaredConstructors(), true, visitor);
     } else {
@@ -270,7 +270,7 @@ public final class ClassBuilding {
 
   /** Visit all methods declared by the host class that can be fast-invoked. */
   private static void visitFastMethods(Class<?> hostClass, Consumer<Method> visitor) {
-    if (hasPackageAccess()) {
+    if (hasPackageAccess(hostClass)) {
       // can fast-invoke all non-private methods declared by the class
       visitMembers(hostClass.getDeclaredMethods(), true, visitor);
     } else {

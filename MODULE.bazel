@@ -41,7 +41,7 @@ maven.install(
         "org.hsqldb:hsqldb-j5:2.0.0",
         "org.jspecify:jspecify:1.0.0",
         "org.mockito:mockito-core:4.2.0",
-        "org.ow2.asm:asm:9.5",
+        "org.ow2.asm:asm:9.8",
         "org.springframework:spring-beans:5.3.18",
         "org.springframework:spring-core:5.3.18",
     ],

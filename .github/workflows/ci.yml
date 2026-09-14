@@ -30,11 +30,11 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        java: [11, 17, 21]
+        java: [25]
         # Additionally add macos & windows with a single recent JDK
         include:
           - os: macos-latest
-            java: 17
+            java: 25
           # Windows has some line-ending issues right now.
           #- os: windows-latest
           #  java: 17
@@ -54,11 +54,11 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        java: [11, 17, 21]
+        java: [25]
         # Additionally add macos & windows with a single recent JDK
         include:
           - os: macos-latest
-            java: 17
+            java: 25
           # Windows has some line-ending & "//..."-escaping issues (for build //...) right now.
           #- os: windows-latest
           #  java: 17

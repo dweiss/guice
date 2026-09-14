@@ -161,14 +161,9 @@ final class Enhancer extends AbstractGlueGenerator {
 
   private final Map<Method, Method> bridgeDelegates;
 
-  private final String checkcastToProxy;
-
   Enhancer(Class<?> hostClass, Map<Method, Method> bridgeDelegates) {
     super(hostClass, ENHANCER_BY_GUICE_MARKER);
     this.bridgeDelegates = bridgeDelegates;
-
-    // with defineAnonymousClass we can't downcast to the proxy and must use host instead
-    this.checkcastToProxy = ClassDefining.canDowncastToProxy(hostClass) ? proxyName : hostName;
   }
 
   @Override
@@ -354,7 +349,7 @@ final class Enhancer extends AbstractGlueGenerator {
     int invokeOpcode = target != method ? INVOKEVIRTUAL : INVOKESPECIAL;
 
     mv.visitVarInsn(ALOAD, 1);
-    mv.visitTypeInsn(CHECKCAST, checkcastToProxy);
+    mv.visitTypeInsn(CHECKCAST, proxyName);
     unpackArguments(mv, target.getParameterTypes());
 
     mv.visitMethodInsn(
@@ -379,7 +374,7 @@ final class Enhancer extends AbstractGlueGenerator {
             exceptionNames(bridge));
 
     mv.visitVarInsn(ALOAD, 0);
-    mv.visitTypeInsn(CHECKCAST, checkcastToProxy);
+    mv.visitTypeInsn(CHECKCAST, proxyName);
 
     Class<?>[] bridgeParameterTypes = bridge.getParameterTypes();
     Class<?>[] targetParameterTypes = target.getParameterTypes();

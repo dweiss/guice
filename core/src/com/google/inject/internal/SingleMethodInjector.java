@@ -58,7 +58,7 @@ final class SingleMethodInjector implements SingleMemberInjector {
     if (InternalFlags.getUseMethodHandlesOption()) {
       MethodHandle methodHandle = InternalMethodHandles.unreflect(method);
       if (methodHandle != null) {
-        methodHandle = InternalMethodHandles.dropReturn(methodHandle);
+        methodHandle = MethodHandles.dropReturn(methodHandle);
         if ((method.getModifiers() & Modifier.STATIC) != 0) {
           // insert a fake ignored receiver
           methodHandle = MethodHandles.dropArguments(methodHandle, 0, Object.class);
@@ -125,7 +125,7 @@ final class SingleMethodInjector implements SingleMemberInjector {
                     .bindTo(fastMethod)
                     // Cast the first parameter to `Object[]`
                     .asType(methodType(Object.class, Object[].class, Object.class));
-            handle = InternalMethodHandles.dropReturn(handle);
+            handle = MethodHandles.dropReturn(handle);
             // Swap so the receiver is first
             handle =
                 MethodHandles.permuteArguments(
@@ -187,7 +187,7 @@ final class SingleMethodInjector implements SingleMemberInjector {
         // bind to the `Method` object
         // (Object, Object[])->Object
         var handle = InternalMethodHandles.invokeHandle(method);
-        handle = InternalMethodHandles.dropReturn(handle); // we never care about return values.
+        handle = MethodHandles.dropReturn(handle); // we never care about return values.
         handle =
             InternalMethodHandles.catchErrorInMethodAndRethrowWithSource(handle, injectionPoint);
         // (Object, InternalContext)->Object

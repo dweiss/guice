@@ -75,10 +75,8 @@ public abstract class ProviderMethod<T> extends InternalProviderInstanceBindingI
       // `unreflect` fails if the method is not public and there is either a security manager
       // blocking access (very rare) or application has set up modules that are not open.
       // In that case we fall back to fast class generation.
-      // TODO(lukes): In theory we could use a similar approach to the 'HiddenClassDefiner' and
-      // use Unsafe to access the trusted MethodHandles.Lookup object which allows us to access all
-      // methods.  However, this is a dangerous and long term unstable approach. The better approach
-      // is to add a new API that allows users to pass us an appropriate MethodHandles.Lookup
+      // TODO(lukes): The better approach is to add a new API that allows users to pass us an
+      // appropriate MethodHandles.Lookup
       // object.  These objects act like `capabilities` which users can use to pass private access
       // to us.  e.g. `Binder.grantAccess(MethodHandles.Lookup lookup)` could allow callers to pass
       // us a lookup object that allows us to access all their methods. Then they could mark their

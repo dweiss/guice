@@ -97,14 +97,14 @@ abstract class AbstractGlueGenerator {
   protected AbstractGlueGenerator(Class<?> hostClass, String marker) {
     this.hostClass = hostClass;
     this.hostName = Type.getInternalName(hostClass);
-    this.proxyName = proxyName(hostName, marker, hashCode());
+    this.proxyName = proxyName(hostClass, hostName, marker, hashCode());
   }
 
   /** Generates a unique name based on the original class name and marker. */
-  private static String proxyName(String hostName, String marker, int hash) {
+  private static String proxyName(Class<?> hostClass, String hostName, String marker, int hash) {
     long id = ((hash & 0x000FFFFF) | (COUNTER.getAndIncrement() << 20));
     String proxyName = hostName + marker + Long.toHexString(id);
-    if (proxyName.startsWith("java/") && !ClassDefining.hasPackageAccess()) {
+    if (proxyName.startsWith("java/") && !ClassDefining.hasPackageAccess(hostClass)) {
       proxyName = '$' + proxyName; // can't define java.* glue in same package
     }
     return proxyName;

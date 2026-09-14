@@ -18,7 +18,6 @@ package com.google.inject.internal.aop;
 
 import com.google.inject.internal.InternalFlags;
 import com.google.inject.internal.InternalFlags.CustomClassLoadingOption;
-import java.util.logging.Logger;
 
 /**
  * Entry-point for defining dynamically generated classes.
@@ -28,53 +27,44 @@ import java.util.logging.Logger;
 public final class ClassDefining {
   private ClassDefining() {}
 
-  private static final Logger logger = Logger.getLogger(ClassDefining.class.getName());
-
-  private static final String CLASS_DEFINING_UNSUPPORTED =
-      "Unsafe is not accessible and custom classloading is turned OFF.";
-
   // initialization-on-demand...
   private static class ClassDefinerHolder {
-    static final ClassDefiner INSTANCE = bindClassDefiner();
-    static final boolean IS_UNSAFE = INSTANCE instanceof UnsafeClassDefiner;
+    static final CustomClassLoadingOption OPTION = InternalFlags.getCustomClassLoadingOption();
+    static final ClassDefiner LOOKUP_DEFINER =
+        new LookupClassDefiner(OPTION == CustomClassLoadingOption.ANONYMOUS);
+    static final ClassDefiner CHILD_DEFINER = new ChildClassDefiner();
   }
 
   /** Defines a new class relative to the host. */
   public static Class<?> define(Class<?> hostClass, byte[] bytecode) throws Exception {
-    return ClassDefinerHolder.INSTANCE.define(hostClass, bytecode);
+    return findClassDefiner(hostClass).define(hostClass, bytecode);
   }
 
-  /** Returns true if the current class definer allows access to package-private members. */
-  public static boolean hasPackageAccess() {
-    return ClassDefinerHolder.IS_UNSAFE;
+  /** Returns true if classes defined for the given host can access its package-private members. */
+  public static boolean hasPackageAccess(Class<?> hostClass) {
+    return ClassDefinerHolder.OPTION != CustomClassLoadingOption.CHILD
+        && LookupClassDefiner.isAccessible(hostClass);
   }
 
   /** Returns true if it's possible to load by name proxies defined from the given host. */
   public static boolean canLoadProxyByName(Class<?> hostClass) {
-    return !ClassDefinerHolder.IS_UNSAFE || UnsafeClassDefiner.canLoadProxyByName(hostClass);
+    // hidden classes can't be loaded by name
+    return ClassDefinerHolder.OPTION != CustomClassLoadingOption.ANONYMOUS
+        || !LookupClassDefiner.canDefineHidden(hostClass);
   }
 
-  /** Returns true if it's possible to downcast to proxies defined from the given host. */
-  public static boolean canDowncastToProxy(Class<?> hostClass) {
-    return !ClassDefinerHolder.IS_UNSAFE || UnsafeClassDefiner.canDowncastToProxy(hostClass);
-  }
-
-  /** Binds the preferred {@link ClassDefiner} instance. */
-  static ClassDefiner bindClassDefiner() {
-    // ANONYMOUS acts like OFF, it picks the Unsafe definer but changes how it defines classes
-    CustomClassLoadingOption loadingOption = InternalFlags.getCustomClassLoadingOption();
-    if (loadingOption == CustomClassLoadingOption.CHILD) {
-      return new ChildClassDefiner(); // override default choice
-    } else if (UnsafeClassDefiner.isAccessible()) {
-      return new UnsafeClassDefiner(); // default choice if available
-    } else if (loadingOption != CustomClassLoadingOption.OFF) {
-      return new ChildClassDefiner(); // second choice unless forbidden
-    } else {
-      logger.warning(CLASS_DEFINING_UNSUPPORTED);
-      return (host, bytes) -> {
-        throw new UnsupportedOperationException(
-            "Cannot define class, " + CLASS_DEFINING_UNSUPPORTED);
-      };
+  /** Finds the appropriate class definer for the given host. */
+  private static ClassDefiner findClassDefiner(Class<?> hostClass) {
+    switch (ClassDefinerHolder.OPTION) {
+      case CHILD:
+        return ClassDefinerHolder.CHILD_DEFINER;
+      case BRIDGE:
+        return LookupClassDefiner.isAccessible(hostClass)
+            ? ClassDefinerHolder.LOOKUP_DEFINER
+            : ClassDefinerHolder.CHILD_DEFINER;
+      default:
+        // OFF and ANONYMOUS never create class loaders; defining fails if the package isn't open
+        return ClassDefinerHolder.LOOKUP_DEFINER;
     }
   }
 }

@@ -14,10 +14,6 @@ TEST_SUPPORT_SRCS = [
     "internal/WeakKeySetUtils.java",
 ]
 
-ADD_OPENS_SRCS = [
-    "ImplicitBindingJdkPackagePrivateTest.java",
-]
-
 TEST_JAVAC_OPTS = [
     "-Xep:BetaApi:OFF",
     "-Xdoclint:none",
@@ -49,7 +45,7 @@ java_library(
     name = "tests",
     srcs = glob(
         ["**/*.java"],  # glob ignores subfolder that has its own BUILD files
-        exclude = TEST_SUPPORT_SRCS + ADD_OPENS_SRCS + [
+        exclude = TEST_SUPPORT_SRCS + [
             "AllTests.java",
         ],
     ),
@@ -71,24 +67,12 @@ java_library(
     ],
 )
 
-java_library(
-    name = "add_opens_tests",
-    srcs = ADD_OPENS_SRCS,
-    javacopts = TEST_JAVAC_OPTS,
-    deps = [
-        "//core/src/com/google/inject",
-        "//third_party/java/guava/base",
-        "//third_party/java/junit",
-    ],
-)
-
 # This target is unused, but exists so that we can more easily
 # ensure the opensource build maintains compiling code.
 java_library(
     name = "AllTests",
     srcs = ["AllTests.java"],
     deps = [
-        ":add_opens_tests",
         ":tests",
         "//core/src/com/google/inject",
         "//core/test/com/googlecode/guice:tests",
@@ -108,7 +92,6 @@ guice_test_suites(
         "medium",
     ],
     deps = [
-        ":add_opens_tests",
         ":tests",
         "//core/src/com/google/inject",  # bazel requires this b/c of package_info.java
     ],
@@ -128,7 +111,6 @@ guice_test_suites(
     ],
     suffix = "_with_windows_separator",
     deps = [
-        ":add_opens_tests",
         ":tests",
         "//core/src/com/google/inject",  # bazel requires this b/c of package_info.java
     ],
@@ -151,7 +133,6 @@ guice_test_suites(
     ],
     suffix = "_stack_trace_%s_use_method_handles_%s" % (include_stack_trace_option, use_method_handles_option),
     deps = [
-        ":add_opens_tests",
         ":tests",
         "//core/src/com/google/inject",  # bazel requires this b/c of package_info.java
     ],
@@ -179,7 +160,6 @@ guice_test_suites(
     ],
     suffix = "_custom_class_loading_%s_method_handles_%s" % (custom_class_loading_option, use_method_handles_option),
     deps = [
-        ":add_opens_tests",
         ":tests",
         "//core/src/com/google/inject",  # bazel requires this b/c of package_info.java
     ],

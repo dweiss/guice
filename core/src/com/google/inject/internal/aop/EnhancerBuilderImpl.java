@@ -94,7 +94,7 @@ final class EnhancerBuilderImpl implements BytecodeGen.EnhancerBuilder {
 
     visitMembers(
         hostClass.getDeclaredConstructors(),
-        hasPackageAccess(),
+        hasPackageAccess(hostClass),
         ctor -> glueMap.put(signature(ctor), ctor));
 
     for (int methodIndex = methodIndices.nextSetBit(0);
