@@ -1,5 +1,5 @@
 name: 'Local Artifact Tests'
-description: 'Runs local tests on the installed Guice LOCAL-SNAPSHOT artifacts.'
+description: 'Builds Guice with Maven and runs the example project against the locally installed artifacts.'
 
 runs:
   using: "composite"
@@ -13,19 +13,19 @@ runs:
       uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf
       with:
         path: ~/.m2/repository
-        key: ${{ runner.os }}-artifact-tests-${{ hashFiles('examples/**/pom.xml') }}
+        key: ${{ runner.os }}-artifact-tests-${{ hashFiles('**/pom.xml') }}
         restore-keys: |
           ${{ runner.os }}-artifact-tests-
     - name: 'Delete any stale artifacts from cache'
       run: rm -rf ~/.m2/repository/com/google/inject
       shell: bash
-    - name: 'Download local snapshot for tests'
-      uses: actions/download-artifact@v4
-      with:
-        name: local-snapshot
-        path: ~/.m2/repository/com/google/inject
+    - name: 'Install local snapshot'
+      run: mvn -B install -DskipTests -Dsource.skip=true -Dmaven.javadoc.skip=true
+      shell: bash
     - name: 'Maven Java local tests'
-      run: mvn -f examples/guice-demo/pom.xml verify -Dguice.version=LOCAL-SNAPSHOT --fail-at-end
+      run: |
+        GUICE_VERSION=$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)
+        mvn -B -f examples/guice-demo/pom.xml verify -Dguice.version="$GUICE_VERSION" --fail-at-end
       shell: bash
     - name: 'Clean up Maven cache'
       run: rm -rf ~/.m2/repository/com/google/inject
