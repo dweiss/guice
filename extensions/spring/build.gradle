@@ -1,0 +1,6 @@
+description = 'Google Guice - Extensions - Spring'
+ext.osgiModule = 'com.google.inject.spring'
+
+dependencies {
+  provided libs.spring.beans
+}

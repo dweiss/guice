@@ -1,0 +1,2 @@
+description = 'Google Guice - Extensions - JNDI'
+ext.osgiModule = 'com.google.inject.jndi'

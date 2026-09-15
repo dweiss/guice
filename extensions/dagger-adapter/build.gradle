@@ -1,0 +1,10 @@
+description = 'Google Guice - Extensions - Dagger Adapter'
+ext.osgiModule = 'com.google.inject.daggeradapter'
+
+dependencies {
+  optional libs.dagger
+  testImplementation libs.dagger.producers
+  testImplementation libs.truth
+  testImplementation libs.autovalue.annotations
+  testAnnotationProcessor libs.autovalue
+}

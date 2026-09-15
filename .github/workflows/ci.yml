@@ -1,5 +1,4 @@
-# This workflow will build a Java project with Maven
-# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-maven
+# This workflow builds and tests Guice with Gradle.
 name: continuous-integration
 env:
   USE_JAVA_DISTRIBUTION: 'zulu'
@@ -24,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  maven-test:
+  gradle-test:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -39,12 +38,12 @@ jobs:
           #  java: 17
       fail-fast: false
       max-parallel: 4
-    name: Test using Maven with JDK ${{ matrix.java }} on ${{ matrix.os }}
+    name: Build and test with JDK ${{ matrix.java }} on ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - uses: ./.github/actions/maven-test
+      - uses: ./.github/actions/gradle-test
 
   local-artifact-tests:
     runs-on: ubuntu-latest
@@ -57,7 +56,7 @@ jobs:
 
   publish:
     runs-on: ubuntu-latest
-    needs: [maven-test, local-artifact-tests]
+    needs: [gradle-test, local-artifact-tests]
     if: github.event_name == 'push' && github.repository == 'google/guice' && github.ref == 'refs/heads/master'
     name: Publish Javadoc and Snapshot
 

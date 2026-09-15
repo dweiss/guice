@@ -1,5 +1,5 @@
-/build/
-target/
+build/
+.gradle/
 bin/
 .project
 .classpath
@@ -10,4 +10,3 @@ bin/
 .idea/
 *.iml
 *.ipr
-extensions/**/build/

@@ -1,5 +1,5 @@
 name: 'Local Artifact Tests'
-description: 'Builds Guice with Maven and runs the example project against the locally installed artifacts.'
+description: 'Publishes Guice to the local Maven repository and runs the example project against it.'
 
 runs:
   using: "composite"
@@ -9,24 +9,18 @@ runs:
       with:
         distribution: ${{ env.USE_JAVA_DISTRIBUTION }}
         java-version: ${{ env.USE_JAVA_VERSION }}
-    - name: 'Cache Maven files'
-      uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf
-      with:
-        path: ~/.m2/repository
-        key: ${{ runner.os }}-artifact-tests-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-artifact-tests-
-    - name: 'Delete any stale artifacts from cache'
+        cache: gradle
+    - name: 'Delete any stale artifacts'
       run: rm -rf ~/.m2/repository/com/google/inject
       shell: bash
-    - name: 'Install local snapshot'
-      run: mvn -B install -DskipTests -Dsource.skip=true -Dmaven.javadoc.skip=true
+    - name: 'Publish to the local Maven repository'
+      run: ./gradlew publishToMavenLocal --console=plain
       shell: bash
-    - name: 'Maven Java local tests'
+    - name: 'Build the example against the local artifacts'
       run: |
-        GUICE_VERSION=$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)
-        mvn -B -f examples/guice-demo/pom.xml verify -Dguice.version="$GUICE_VERSION" --fail-at-end
+        GUICE_VERSION=$(sed -n 's/^version=//p' gradle.properties)
+        ./gradlew -p examples/guice-demo test --console=plain -Pguice.version="$GUICE_VERSION"
       shell: bash
-    - name: 'Clean up Maven cache'
+    - name: 'Clean up'
       run: rm -rf ~/.m2/repository/com/google/inject
       shell: bash

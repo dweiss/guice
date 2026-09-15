@@ -1,0 +1,27 @@
+// A small consumer of the published Guice artifacts. Run against a locally installed build with
+//   ./gradlew publishToMavenLocal
+//   ./gradlew -p examples/guice-demo test -Pguice.version=<version>
+
+plugins {
+  id 'java'
+}
+
+group = 'com.example'
+version = '1.0-SNAPSHOT'
+
+repositories {
+  mavenLocal()
+  mavenCentral()
+}
+
+def guiceVersion = findProperty('guice.version') ?: '5.1.0'
+
+dependencies {
+  implementation "com.google.inject:guice:${guiceVersion}"
+  testImplementation "com.google.inject.extensions:guice-testlib:${guiceVersion}"
+  testImplementation 'junit:junit:4.13.2'
+}
+
+test {
+  useJUnit()
+}

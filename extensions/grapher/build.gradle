@@ -1,0 +1,6 @@
+description = 'Google Guice - Extensions - Grapher'
+ext.osgiModule = 'com.google.inject.grapher'
+
+dependencies {
+  api project(':guice-assistedinject')
+}

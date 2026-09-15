@@ -1,0 +1,7 @@
+description = 'Google Guice - Extensions - JMX'
+ext.osgiModule = 'com.google.inject.tools.jmx'
+
+// The only test is not actually a unit test.
+tasks.withType(Test).configureEach {
+  enabled = false
+}

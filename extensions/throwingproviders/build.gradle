@@ -1,0 +1,12 @@
+description = 'Google Guice - Extensions - ThrowingProviders'
+ext.osgiModule = 'com.google.inject.throwingproviders'
+
+dependencies {
+  api libs.jsr305
+  api libs.errorprone.annotations
+  testImplementation libs.truth
+}
+
+tasks.withType(Test).configureEach {
+  exclude '**/TestScope*'
+}

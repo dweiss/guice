@@ -4,7 +4,7 @@ set -eu
 
 bash $(dirname $0)/generate-latest-docs.sh
 
-echo -e "Publishing javadoc & JDiff...\n"
+echo -e "Publishing javadoc...\n"
 mkdir -p $HOME/guice-docs/latest
 cp -R build/docs/* $HOME/guice-docs/latest/
 
@@ -20,7 +20,7 @@ fi
 mkdir -p api-docs/latest
 cp -rf $HOME/guice-docs/latest/* api-docs/latest/
 git add -f .
-git commit -m "Latest javadoc & api-diffs on successful CI build $GITHUB_SHA auto-pushed to gh-pages"
+git commit -m "Latest javadoc on successful CI build $GITHUB_SHA auto-pushed to gh-pages"
 git push -fq origin gh-pages > /dev/null
 
-echo -e "Published Javadoc & JDiff to gh-pages.\n"
+echo -e "Published Javadoc to gh-pages.\n"

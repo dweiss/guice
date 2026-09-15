@@ -1,0 +1,7 @@
+description = 'Google Guice - Extensions - AssistedInject'
+ext.osgiModule = 'com.google.inject.assistedinject'
+
+dependencies {
+  api libs.errorprone.annotations
+  testImplementation libs.truth
+}

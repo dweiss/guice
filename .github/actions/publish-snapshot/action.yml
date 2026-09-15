@@ -9,22 +9,12 @@ runs:
       with:
         distribution: ${{ env.USE_JAVA_DISTRIBUTION }}
         java-version: ${{ env.USE_JAVA_VERSION }}
-        server-id: google-snapshots
-        server-username: MAVEN_USERNAME
-        server-password: MAVEN_PASSWORD
-    - name: 'Cache local Maven repository'
-      uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf
-      with:
-        path: ~/.m2/repository
-        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-maven-
+        cache: gradle
     - name: Publish Javadoc
       run: |
         chmod +x util/publish-latest-docs.sh
         ./util/publish-latest-docs.sh
       shell: bash
     - name: Publish Snapshot
-      run: mvn clean deploy -DskipTests=true -Dmaven.javadoc.skip=true
+      run: ./gradlew publish --console=plain
       shell: bash
-
