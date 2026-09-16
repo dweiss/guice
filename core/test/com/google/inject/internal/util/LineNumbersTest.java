@@ -27,7 +27,12 @@ import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.internal.InternalFlags;
 import com.google.inject.matcher.Matchers;
-import java.lang.reflect.Modifier;
+import java.lang.classfile.Annotation;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.attribute.RuntimeVisibleAnnotationsAttribute;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDescs;
+import java.lang.constant.MethodTypeDesc;
 import jakarta.inject.Inject;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
@@ -106,35 +111,35 @@ public class LineNumbersTest {
     }
 
     Class<?> generate() {
-      org.objectweb.asm.ClassWriter cw =
-          new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_MAXS);
-      cw.visit(
-          org.objectweb.asm.Opcodes.V1_5,
-          Modifier.PUBLIC,
-          name,
-          null,
-          org.objectweb.asm.Type.getInternalName(Object.class),
-          null);
-
-      String sig = "(" + org.objectweb.asm.Type.getDescriptor(B.class) + ")V";
-
-      org.objectweb.asm.MethodVisitor mv =
-          cw.visitMethod(Modifier.PUBLIC, "<init>", sig, null, null);
-
-      mv.visitAnnotation(org.objectweb.asm.Type.getDescriptor(Inject.class), true);
-      mv.visitCode();
-      mv.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
-      mv.visitMethodInsn(
-          org.objectweb.asm.Opcodes.INVOKESPECIAL,
-          org.objectweb.asm.Type.getInternalName(Object.class),
-          "<init>",
-          "()V");
-      mv.visitInsn(org.objectweb.asm.Opcodes.RETURN);
-      mv.visitMaxs(0, 0);
-      mv.visitEnd();
-      cw.visitEnd();
-
-      byte[] buf = cw.toByteArray();
+      byte[] buf =
+          ClassFile.of()
+              .build(
+                  ClassDesc.ofInternalName(name),
+                  cb -> {
+                    cb.withVersion(ClassFile.JAVA_5_VERSION, 0);
+                    cb.withFlags(ClassFile.ACC_PUBLIC);
+                    cb.withSuperclass(ConstantDescs.CD_Object);
+                    cb.withMethod(
+                        ConstantDescs.INIT_NAME,
+                        MethodTypeDesc.of(
+                            ConstantDescs.CD_void, ClassDesc.ofDescriptor(B.class.descriptorString())),
+                        ClassFile.ACC_PUBLIC,
+                        mb -> {
+                          mb.with(
+                              RuntimeVisibleAnnotationsAttribute.of(
+                                  Annotation.of(
+                                      ClassDesc.ofDescriptor(Inject.class.descriptorString()))));
+                          mb.withCode(
+                              code -> {
+                                code.aload(0);
+                                code.invokespecial(
+                                    ConstantDescs.CD_Object,
+                                    ConstantDescs.INIT_NAME,
+                                    ConstantDescs.MTD_void);
+                                code.return_();
+                              });
+                        });
+                  });
 
       return defineClass(name.replace('/', '.'), buf, 0, buf.length);
     }

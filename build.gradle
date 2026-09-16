@@ -10,8 +10,6 @@ buildscript {
   dependencies {
     // Same bnd version that maven-bundle-plugin 5.1.8 used, so OSGi manifests stay identical.
     classpath 'biz.aQute.bnd:biz.aQute.bndlib:6.3.1'
-    // Used by core's jarjar task.
-    classpath 'org.ow2.asm:asm-commons:9.8'
   }
 }
 
@@ -189,13 +187,13 @@ configure(javaProjects) {
       source.matching { include '**/package-info.java' }.visit { details ->
         def classFile = new File(destinationDirectory.get().asFile, details.relativePath.pathString - '.java' + '.class')
         if (!details.directory && !classFile.exists()) {
-          def writer = new org.objectweb.asm.ClassWriter(0)
-          writer.visit(org.objectweb.asm.Opcodes.V25,
-              org.objectweb.asm.Opcodes.ACC_INTERFACE | org.objectweb.asm.Opcodes.ACC_ABSTRACT | org.objectweb.asm.Opcodes.ACC_SYNTHETIC,
-              details.relativePath.pathString - '.java', null, 'java/lang/Object', null)
-          writer.visitSource('package-info.java', null)
-          writer.visitEnd()
-          classFile.bytes = writer.toByteArray()
+          def classFile_ = java.lang.classfile.ClassFile
+          classFile.bytes = classFile_.of().build(
+              java.lang.constant.ClassDesc.ofInternalName(details.relativePath.pathString - '.java')) { cb ->
+            cb.withVersion(classFile_.JAVA_25_VERSION, 0)
+            cb.withFlags(classFile_.ACC_INTERFACE | classFile_.ACC_ABSTRACT | classFile_.ACC_SYNTHETIC)
+            cb.with(java.lang.classfile.attribute.SourceFileAttribute.of('package-info.java'))
+          }
         }
       }
     }

@@ -12,12 +12,4 @@ dependencies {
 
 publishing.publications.maven {
   from components.javaPlatform
-  pom.withXml {
-    // The plain (non-jarjar) core classes, which a Gradle constraint cannot express.
-    def dependency = asNode().dependencyManagement[0].dependencies[0].appendNode('dependency')
-    dependency.appendNode('groupId', 'com.google.inject')
-    dependency.appendNode('artifactId', 'guice')
-    dependency.appendNode('version', project.version)
-    dependency.appendNode('classifier', 'classes')
-  }
 }

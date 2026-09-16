@@ -58,7 +58,7 @@ final class MethodPartition {
    *
    * <p>At the same time we use generic type resolution to match resolved bridge methods to the
    * methods they delegate to (this avoids the need to crack open the original class resource for
-   * in-depth analysis by ASM, especially since the class bytes might not be accessible.)
+   * in-depth bytecode analysis, especially since the class bytes might not be accessible.)
    */
   public void collectEnhanceableMethods(
       TypeLiteral<?> hostType,

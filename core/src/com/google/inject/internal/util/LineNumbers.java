@@ -26,16 +26,21 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
+import java.lang.classfile.Attributes;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
+import java.lang.classfile.CodeElement;
+import java.lang.classfile.CodeModel;
+import java.lang.classfile.MethodModel;
+import java.lang.classfile.Opcode;
+import java.lang.classfile.instruction.FieldInstruction;
+import java.lang.classfile.instruction.LineNumber;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.AccessFlag;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.objectweb.asm.AnnotationVisitor;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassVisitor;
-import org.objectweb.asm.FieldVisitor;
-import org.objectweb.asm.Label;
-import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
 
 /**
  * Looks up line numbers for classes and their members.
@@ -46,8 +51,6 @@ final class LineNumbers {
 
   private static final Logger logger = Logger.getLogger(LineNumbers.class.getName());
   private static volatile boolean alreadyLoggedReadingFailure;
-
-  private static final int ASM_API_LEVEL = Opcodes.ASM9;
 
   private final Class<?> type;
   private final Map<String, Integer> lines = Maps.newHashMap();
@@ -71,10 +74,10 @@ final class LineNumbers {
       }
       if (in != null) {
         try {
-          new ClassReader(in).accept(new LineNumberReader(), ClassReader.SKIP_FRAMES);
+          readLineNumbers(ClassFile.of().parse(in.readAllBytes()));
         } catch (Exception ignored) {
           // We may be trying to inspect classes that were compiled with a more recent version
-          // of javac than our ASM supports.  If that happens, just ignore the class and don't
+          // of javac than this JVM supports.  If that happens, just ignore the class and don't
           // capture line numbers. But log the failure so folks know something's off.
           // (Only log it once, though, to avoid spam. It's OK if concurrent access makes this
           //  happen more than once.)
@@ -82,8 +85,7 @@ final class LineNumbers {
             alreadyLoggedReadingFailure = true;
             logger.log(
                 Level.WARNING,
-                "Failed loading line numbers. ASM is probably out of date. Further failures won't"
-                    + " be logged.",
+                "Failed loading line numbers. Further failures won't be logged.",
                 ignored);
           }
         } finally {
@@ -133,132 +135,52 @@ final class LineNumbers {
     if (member instanceof Field) {
       return member.getName();
     } else if (member instanceof Method) {
-      return member.getName() + org.objectweb.asm.Type.getMethodDescriptor((Method) member);
-
+      Method method = (Method) member;
+      return method.getName()
+          + MethodType.methodType(method.getReturnType(), method.getParameterTypes())
+              .descriptorString();
     } else if (member instanceof Constructor) {
-      StringBuilder sb = new StringBuilder().append("<init>(");
-      for (Class<?> param : ((Constructor<?>) member).getParameterTypes()) {
-        sb.append(org.objectweb.asm.Type.getDescriptor(param));
-      }
-      return sb.append(")V").toString();
+      return "<init>"
+          + MethodType.methodType(void.class, ((Constructor<?>) member).getParameterTypes())
+              .descriptorString();
     } else {
       throw new IllegalArgumentException(
           "Unsupported implementation class for Member, " + member.getClass());
     }
   }
 
-  private class LineNumberReader extends ClassVisitor {
+  /** Records the source file, the first line of each member, and the earliest line seen. */
+  private void readLineNumbers(ClassModel classModel) {
+    classModel
+        .findAttribute(Attributes.sourceFile())
+        .ifPresent(attribute -> source = attribute.sourceFile().stringValue());
 
-    private int line = -1;
-    private String pendingMethod;
-    private String name;
-
-    LineNumberReader() {
-      super(ASM_API_LEVEL);
-    }
-
-    @Override
-    public void visit(
-        int version,
-        int access,
-        String name,
-        String signature,
-        String superName,
-        String[] interfaces) {
-      this.name = name;
-    }
-
-    @Override
-    public MethodVisitor visitMethod(
-        int access, String name, String desc, String signature, String[] exceptions) {
-      if ((access & Opcodes.ACC_PRIVATE) != 0) {
-        return null;
+    String className = classModel.thisClass().name().stringValue();
+    for (MethodModel method : classModel.methods()) {
+      if (method.flags().has(AccessFlag.PRIVATE)) {
+        continue;
       }
-      pendingMethod = name + desc;
-      line = -1;
-      return new LineNumberMethodVisitor();
-    }
-
-    @Override
-    public void visitSource(String source, String debug) {
-      LineNumbers.this.source = source;
-    }
-
-    public void visitLineNumber(int line, Label start) {
-      if (line < firstLine) {
-        firstLine = line;
-      }
-
-      this.line = line;
-      if (pendingMethod != null) {
-        lines.put(pendingMethod, line);
-        pendingMethod = null;
-      }
-    }
-
-    @Override
-    public FieldVisitor visitField(
-        int access, String name, String desc, String signature, Object value) {
-      return null;
-    }
-
-    @Override
-    public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
-      return new LineNumberAnnotationVisitor();
-    }
-
-    public AnnotationVisitor visitParameterAnnotation(int parameter, String desc, boolean visible) {
-      return new LineNumberAnnotationVisitor();
-    }
-
-    class LineNumberMethodVisitor extends MethodVisitor {
-      LineNumberMethodVisitor() {
-        super(ASM_API_LEVEL);
-      }
-
-      @Override
-      public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
-        return new LineNumberAnnotationVisitor();
-      }
-
-      @Override
-      public AnnotationVisitor visitAnnotationDefault() {
-        return new LineNumberAnnotationVisitor();
-      }
-
-      @Override
-      public void visitFieldInsn(int opcode, String owner, String name, String desc) {
-        if (opcode == Opcodes.PUTFIELD
-            && LineNumberReader.this.name.equals(owner)
-            && !lines.containsKey(name)
+      String pendingMethod = method.methodName().stringValue() + method.methodType().stringValue();
+      int line = -1;
+      List<CodeElement> code = method.code().map(CodeModel::elementList).orElse(List.of());
+      for (CodeElement element : code) {
+        if (element instanceof LineNumber lineNumber) {
+          line = lineNumber.line();
+          if (line < firstLine) {
+            firstLine = line;
+          }
+          if (pendingMethod != null) {
+            lines.put(pendingMethod, line);
+            pendingMethod = null;
+          }
+        } else if (element instanceof FieldInstruction field
+            && field.opcode() == Opcode.PUTFIELD
+            && className.equals(field.owner().name().stringValue())
             && line != -1) {
-          lines.put(name, line);
+          // a field is assigned on the first line where a non-private method stores it
+          lines.putIfAbsent(field.name().stringValue(), line);
         }
       }
-
-      @Override
-      public void visitLineNumber(int line, Label start) {
-        LineNumberReader.this.visitLineNumber(line, start);
-      }
-    }
-
-    class LineNumberAnnotationVisitor extends AnnotationVisitor {
-      LineNumberAnnotationVisitor() {
-        super(ASM_API_LEVEL);
-      }
-
-      @Override
-      public AnnotationVisitor visitAnnotation(String name, String desc) {
-        return this;
-      }
-
-      @Override
-      public AnnotationVisitor visitArray(String name) {
-        return this;
-      }
-
-      public void visitLocalVariable(
-          String name, String desc, String signature, Label start, Label end, int index) {}
     }
   }
 }

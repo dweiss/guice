@@ -16,28 +16,29 @@
 
 package com.google.inject.internal.aop;
 
-import static java.lang.reflect.Modifier.PUBLIC;
-import static java.lang.reflect.Modifier.STATIC;
-import static org.objectweb.asm.Opcodes.ACONST_NULL;
-import static org.objectweb.asm.Opcodes.ARETURN;
-import static org.objectweb.asm.Opcodes.F_SAME;
-import static org.objectweb.asm.Opcodes.ILOAD;
+import static java.lang.classfile.ClassFile.ACC_PUBLIC;
+import static java.lang.classfile.ClassFile.ACC_STATIC;
+import static java.lang.constant.ConstantDescs.CD_Object;
+import static java.lang.constant.ConstantDescs.CD_int;
 
+import java.lang.classfile.ClassBuilder;
+import java.lang.classfile.CodeBuilder;
+import java.lang.classfile.Label;
+import java.lang.classfile.instruction.SwitchCase;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.MethodTypeDesc;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.NavigableMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Label;
-import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Type;
 
 /**
  * Support code for generating enhancer/fast-class glue.
@@ -83,25 +84,29 @@ abstract class AbstractGlueGenerator {
    * The trampoline method takes an index, along with a context object and an array of argument
    * objects, and invokes the appropriate constructor/method returning the result as an object.
    */
-  protected static final String TRAMPOLINE_DESCRIPTOR =
-      "(ILjava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;";
+  protected static final MethodTypeDesc TRAMPOLINE_TYPE =
+      MethodTypeDesc.of(CD_Object, CD_int, CD_Object, CD_Object.arrayType());
 
   protected final Class<?> hostClass;
 
-  protected final String hostName;
+  protected final ClassDesc hostType;
 
   protected final String proxyName;
+
+  protected final ClassDesc proxyType;
 
   private static final AtomicInteger COUNTER = new AtomicInteger();
 
   protected AbstractGlueGenerator(Class<?> hostClass, String marker) {
     this.hostClass = hostClass;
-    this.hostName = Type.getInternalName(hostClass);
-    this.proxyName = proxyName(hostClass, hostName, marker, hashCode());
+    this.hostType = BytecodeTasks.classDesc(hostClass);
+    this.proxyName = proxyName(hostClass, marker, hashCode());
+    this.proxyType = ClassDesc.ofInternalName(proxyName);
   }
 
   /** Generates a unique name based on the original class name and marker. */
-  private static String proxyName(Class<?> hostClass, String hostName, String marker, int hash) {
+  private static String proxyName(Class<?> hostClass, String marker, int hash) {
+    String hostName = hostClass.getName().replace('.', '/');
     long id = ((hash & 0x000FFFFF) | (COUNTER.getAndIncrement() << 20));
     String proxyName = hostName + marker + Long.toHexString(id);
     if (proxyName.startsWith("java/") && !ClassDefining.hasPackageAccess(hostClass)) {
@@ -178,42 +183,43 @@ abstract class AbstractGlueGenerator {
    * Generate trampoline that takes an index, along with a context object and array of argument
    * objects, and invokes the appropriate constructor/method returning the result as an object.
    */
-  protected final void generateTrampoline(ClassWriter cw, Collection<Executable> members) {
-    MethodVisitor mv =
-        cw.visitMethod(PUBLIC | STATIC, TRAMPOLINE_NAME, TRAMPOLINE_DESCRIPTOR, null, null);
-    mv.visitCode();
+  protected final void generateTrampoline(ClassBuilder cb, Collection<Executable> members) {
+    cb.withMethodBody(
+        TRAMPOLINE_NAME,
+        TRAMPOLINE_TYPE,
+        ACC_PUBLIC | ACC_STATIC,
+        code -> {
+          Label defaultLabel = code.newLabel();
+          List<SwitchCase> cases = new ArrayList<>(members.size());
+          for (int i = 0; i < members.size(); i++) {
+            cases.add(SwitchCase.of(i, code.newLabel()));
+          }
 
-    Label[] labels = new Label[members.size()];
-    Arrays.setAll(labels, i -> new Label());
-    Label defaultLabel = new Label();
+          if (!cases.isEmpty()) {
+            code.iload(0);
+            code.tableswitch(0, cases.size() - 1, defaultLabel, cases);
+          }
 
-    mv.visitVarInsn(ILOAD, 0);
-    mv.visitTableSwitchInsn(0, labels.length - 1, defaultLabel, labels);
+          int index = 0;
+          for (Executable member : members) {
+            code.labelBinding(cases.get(index++).target());
+            if (member instanceof Constructor<?> constructor) {
+              generateConstructorInvoker(code, constructor);
+            } else {
+              generateMethodInvoker(code, (Method) member);
+            }
+            code.areturn();
+          }
 
-    int labelIndex = 0;
-    for (Executable member : members) {
-      mv.visitLabel(labels[labelIndex++]);
-      mv.visitFrame(F_SAME, 0, null, 0, null);
-      if (member instanceof Constructor<?>) {
-        generateConstructorInvoker(mv, (Constructor<?>) member);
-      } else {
-        generateMethodInvoker(mv, (Method) member);
-      }
-      mv.visitInsn(ARETURN);
-    }
-
-    mv.visitLabel(defaultLabel);
-    mv.visitFrame(F_SAME, 0, null, 0, null);
-    mv.visitInsn(ACONST_NULL);
-    mv.visitInsn(ARETURN);
-
-    mv.visitMaxs(0, 0);
-    mv.visitEnd();
+          code.labelBinding(defaultLabel);
+          code.aconst_null();
+          code.areturn();
+        });
   }
 
   /** Generate invoker that takes a context and an argument array and calls the constructor. */
-  protected abstract void generateConstructorInvoker(MethodVisitor mv, Constructor<?> constructor);
+  protected abstract void generateConstructorInvoker(CodeBuilder code, Constructor<?> constructor);
 
   /** Generate invoker that takes an instance and an argument array and calls the method. */
-  protected abstract void generateMethodInvoker(MethodVisitor mv, Method method);
+  protected abstract void generateMethodInvoker(CodeBuilder code, Method method);
 }

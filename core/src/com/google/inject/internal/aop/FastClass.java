@@ -18,40 +18,37 @@ package com.google.inject.internal.aop;
 
 import static com.google.inject.internal.BytecodeGen.FASTCLASS_BY_GUICE_MARKER;
 import static com.google.inject.internal.aop.BytecodeTasks.box;
+import static com.google.inject.internal.aop.BytecodeTasks.classDesc;
+import static com.google.inject.internal.aop.BytecodeTasks.methodType;
 import static com.google.inject.internal.aop.BytecodeTasks.unpackArguments;
-import static java.lang.reflect.Modifier.FINAL;
-import static java.lang.reflect.Modifier.PRIVATE;
-import static java.lang.reflect.Modifier.PUBLIC;
-import static java.lang.reflect.Modifier.STATIC;
-import static org.objectweb.asm.ClassWriter.COMPUTE_MAXS;
-import static org.objectweb.asm.Opcodes.ACC_SUPER;
-import static org.objectweb.asm.Opcodes.ACONST_NULL;
-import static org.objectweb.asm.Opcodes.ALOAD;
-import static org.objectweb.asm.Opcodes.ARETURN;
-import static org.objectweb.asm.Opcodes.CHECKCAST;
-import static org.objectweb.asm.Opcodes.DUP;
-import static org.objectweb.asm.Opcodes.GETFIELD;
-import static org.objectweb.asm.Opcodes.H_NEWINVOKESPECIAL;
-import static org.objectweb.asm.Opcodes.ILOAD;
-import static org.objectweb.asm.Opcodes.INVOKEINTERFACE;
-import static org.objectweb.asm.Opcodes.INVOKESPECIAL;
-import static org.objectweb.asm.Opcodes.INVOKESTATIC;
-import static org.objectweb.asm.Opcodes.INVOKEVIRTUAL;
-import static org.objectweb.asm.Opcodes.NEW;
-import static org.objectweb.asm.Opcodes.PUTFIELD;
-import static org.objectweb.asm.Opcodes.PUTSTATIC;
-import static org.objectweb.asm.Opcodes.RETURN;
-import static org.objectweb.asm.Opcodes.V1_8;
+import static java.lang.classfile.ClassFile.ACC_FINAL;
+import static java.lang.classfile.ClassFile.ACC_PRIVATE;
+import static java.lang.classfile.ClassFile.ACC_PUBLIC;
+import static java.lang.classfile.ClassFile.ACC_STATIC;
+import static java.lang.classfile.ClassFile.ACC_SUPER;
+import static java.lang.constant.ConstantDescs.CD_MethodHandle;
+import static java.lang.constant.ConstantDescs.CD_MethodType;
+import static java.lang.constant.ConstantDescs.CD_Object;
+import static java.lang.constant.ConstantDescs.CD_int;
+import static java.lang.constant.ConstantDescs.CD_void;
+import static java.lang.constant.ConstantDescs.CLASS_INIT_NAME;
+import static java.lang.constant.ConstantDescs.INIT_NAME;
+import static java.lang.constant.ConstantDescs.MTD_void;
 
+import java.lang.classfile.ClassBuilder;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.CodeBuilder;
+import java.lang.classfile.attribute.SourceFileAttribute;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.MethodHandleDesc;
+import java.lang.constant.MethodTypeDesc;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Collection;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Handle;
-import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Type;
+import java.util.function.BiFunction;
 
 /**
  * Generates fast-classes.
@@ -100,19 +97,15 @@ import org.objectweb.asm.Type;
  */
 final class FastClass extends AbstractGlueGenerator {
 
-  private static final String[] FAST_CLASS_API = {"java/util/function/BiFunction"};
+  private static final ClassDesc FAST_CLASS_API = classDesc(BiFunction.class);
 
   private static final String INVOKERS_NAME = "GUICE$INVOKERS";
 
-  private static final String INVOKERS_DESCRIPTOR = "Ljava/lang/invoke/MethodHandle;";
+  private static final MethodTypeDesc INDEX_TO_INVOKER_METHOD_TYPE =
+      MethodTypeDesc.of(FAST_CLASS_API, CD_int);
 
-  private static final Type INDEX_TO_INVOKER_METHOD_TYPE =
-      Type.getMethodType("(I)Ljava/util/function/BiFunction;");
-
-  private static final String RAW_INVOKER_DESCRIPTOR =
-      "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;";
-
-  private static final String OBJECT_ARRAY_TYPE = Type.getInternalName(Object[].class);
+  private static final MethodTypeDesc RAW_INVOKER_TYPE =
+      MethodTypeDesc.of(CD_Object, CD_Object, CD_Object);
 
   private final boolean hostIsInterface;
 
@@ -123,120 +116,118 @@ final class FastClass extends AbstractGlueGenerator {
 
   @Override
   protected byte[] generateGlue(Collection<Executable> members) {
-    ClassWriter cw = new ClassWriter(COMPUTE_MAXS);
-    MethodVisitor mv;
+    return ClassFile.of()
+        .build(
+            proxyType,
+            cb -> {
+              // target Java8 because that's all we need for the generated trampoline code
+              cb.withVersion(ClassFile.JAVA_8_VERSION, 0);
+              cb.withFlags(ACC_PUBLIC | ACC_FINAL | ACC_SUPER);
+              cb.withSuperclass(CD_Object);
+              cb.withInterfaceSymbols(FAST_CLASS_API);
+              cb.with(SourceFileAttribute.of(GENERATED_SOURCE));
 
-    // target Java8 because that's all we need for the generated trampoline code
-    cw.visit(V1_8, PUBLIC | FINAL | ACC_SUPER, proxyName, null, "java/lang/Object", FAST_CLASS_API);
-    cw.visitSource(GENERATED_SOURCE, null);
+              // this shared field contains the constructor handle adapted to look like an invoker
+              // table
+              cb.withField(INVOKERS_NAME, CD_MethodHandle, ACC_PUBLIC | ACC_STATIC | ACC_FINAL);
 
-    // this shared field contains the constructor handle adapted to look like an invoker table
-    cw.visitField(PUBLIC | STATIC | FINAL, INVOKERS_NAME, INVOKERS_DESCRIPTOR, null, null)
-        .visitEnd();
+              setupInvokerTable(cb);
 
-    setupInvokerTable(cw);
+              cb.withField("index", CD_int, ACC_PRIVATE | ACC_FINAL);
 
-    cw.visitField(PRIVATE | FINAL, "index", "I", null, null).visitEnd();
+              // fast-class constructor that takes an index and binds it
+              cb.withMethodBody(
+                  INIT_NAME,
+                  MethodTypeDesc.of(CD_void, CD_int),
+                  ACC_PUBLIC,
+                  code -> {
+                    code.aload(0);
+                    code.dup();
+                    code.invokespecial(CD_Object, INIT_NAME, MTD_void);
+                    code.iload(1);
+                    code.putfield(proxyType, "index", CD_int);
+                    code.return_();
+                  });
 
-    // fast-class constructor that takes an index and binds it
-    mv = cw.visitMethod(PUBLIC, "<init>", "(I)V", null, null);
-    mv.visitCode();
-    mv.visitVarInsn(ALOAD, 0);
-    mv.visitInsn(DUP);
-    mv.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
-    mv.visitVarInsn(ILOAD, 1);
-    mv.visitFieldInsn(PUTFIELD, proxyName, "index", "I");
-    mv.visitInsn(RETURN);
-    mv.visitMaxs(0, 0);
-    mv.visitEnd();
+              // fast-class invoker function that takes a context object and argument array
+              cb.withMethodBody(
+                  "apply",
+                  RAW_INVOKER_TYPE,
+                  ACC_PUBLIC,
+                  code -> {
+                    // combine bound index with context object and argument array
+                    code.aload(0);
+                    code.getfield(proxyType, "index", CD_int);
+                    code.aload(1);
+                    code.aload(2);
+                    code.checkcast(CD_Object.arrayType());
+                    // call into the shared trampoline
+                    code.invokestatic(proxyType, TRAMPOLINE_NAME, TRAMPOLINE_TYPE);
+                    code.areturn();
+                  });
 
-    // fast-class invoker function that takes a context object and argument array
-    mv = cw.visitMethod(PUBLIC, "apply", RAW_INVOKER_DESCRIPTOR, null, null);
-    mv.visitCode();
-    // combine bound index with context object and argument array
-    mv.visitVarInsn(ALOAD, 0);
-    mv.visitFieldInsn(GETFIELD, proxyName, "index", "I");
-    mv.visitVarInsn(ALOAD, 1);
-    mv.visitVarInsn(ALOAD, 2);
-    mv.visitTypeInsn(CHECKCAST, OBJECT_ARRAY_TYPE);
-    // call into the shared trampoline
-    mv.visitMethodInsn(INVOKESTATIC, proxyName, TRAMPOLINE_NAME, TRAMPOLINE_DESCRIPTOR, false);
-    mv.visitInsn(ARETURN);
-    mv.visitMaxs(0, 0);
-    mv.visitEnd();
-
-    generateTrampoline(cw, members);
-
-    cw.visitEnd();
-    return cw.toByteArray();
+              generateTrampoline(cb, members);
+            });
   }
 
   /** Generate static initializer to setup invoker table based on the fast-class constructor. */
-  private void setupInvokerTable(ClassWriter cw) {
-    MethodVisitor mv = cw.visitMethod(PRIVATE | STATIC, "<clinit>", "()V", null, null);
-    mv.visitCode();
+  private void setupInvokerTable(ClassBuilder cb) {
+    cb.withMethodBody(
+        CLASS_INIT_NAME,
+        MTD_void,
+        ACC_PRIVATE | ACC_STATIC,
+        code -> {
+          code.loadConstant(MethodHandleDesc.ofConstructor(proxyType, CD_int));
 
-    Handle constructorHandle = new Handle(H_NEWINVOKESPECIAL, proxyName, "<init>", "(I)V", false);
+          // adapt constructor handle to make it look like an invoker table (int -> BiFunction)
+          code.loadConstant(INDEX_TO_INVOKER_METHOD_TYPE);
+          code.invokevirtual(
+              CD_MethodHandle, "asType", MethodTypeDesc.of(CD_MethodHandle, CD_MethodType));
 
-    mv.visitLdcInsn(constructorHandle);
+          code.putstatic(proxyType, INVOKERS_NAME, CD_MethodHandle);
 
-    // adapt constructor handle to make it look like an invoker table (int -> BiFunction)
-    mv.visitLdcInsn(INDEX_TO_INVOKER_METHOD_TYPE);
-    mv.visitMethodInsn(
-        INVOKEVIRTUAL,
-        "java/lang/invoke/MethodHandle",
-        "asType",
-        "(Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/MethodHandle;",
-        false);
-
-    mv.visitFieldInsn(PUTSTATIC, proxyName, INVOKERS_NAME, INVOKERS_DESCRIPTOR);
-
-    mv.visitInsn(RETURN);
-    mv.visitMaxs(0, 0);
-    mv.visitEnd();
+          code.return_();
+        });
   }
 
   @Override
-  protected void generateConstructorInvoker(MethodVisitor mv, Constructor<?> constructor) {
-    mv.visitTypeInsn(NEW, hostName);
-    mv.visitInsn(DUP);
+  protected void generateConstructorInvoker(CodeBuilder code, Constructor<?> constructor) {
+    code.new_(hostType);
+    code.dup();
 
     // fast-class constructor invokers don't use the context object
 
-    unpackArguments(mv, constructor.getParameterTypes());
+    unpackArguments(code, constructor.getParameterTypes());
 
-    mv.visitMethodInsn(
-        INVOKESPECIAL, hostName, "<init>", Type.getConstructorDescriptor(constructor), false);
+    code.invokespecial(hostType, INIT_NAME, methodType(constructor));
   }
 
   @Override
-  protected void generateMethodInvoker(MethodVisitor mv, Method method) {
+  protected void generateMethodInvoker(CodeBuilder code, Method method) {
+    boolean isStatic = Modifier.isStatic(method.getModifiers());
 
-    int invokeOpcode;
-    if ((method.getModifiers() & STATIC) == 0) {
+    if (!isStatic) {
       // context object is the instance whose method we want to call
-      mv.visitVarInsn(ALOAD, 1);
-      mv.visitTypeInsn(CHECKCAST, hostName);
-      invokeOpcode = hostIsInterface ? INVOKEINTERFACE : INVOKEVIRTUAL;
-    } else {
-      // fast-class static method invokers don't use the context object
-      invokeOpcode = INVOKESTATIC;
+      code.aload(1);
+      code.checkcast(hostType);
     }
+    // (fast-class static method invokers don't use the context object)
 
-    unpackArguments(mv, method.getParameterTypes());
+    unpackArguments(code, method.getParameterTypes());
 
-    mv.visitMethodInsn(
-        invokeOpcode,
-        hostName,
-        method.getName(),
-        Type.getMethodDescriptor(method),
-        hostIsInterface);
+    if (isStatic) {
+      code.invokestatic(hostType, method.getName(), methodType(method), hostIsInterface);
+    } else if (hostIsInterface) {
+      code.invokeinterface(hostType, method.getName(), methodType(method));
+    } else {
+      code.invokevirtual(hostType, method.getName(), methodType(method));
+    }
 
     Class<?> returnType = method.getReturnType();
     if (returnType == void.class) {
-      mv.visitInsn(ACONST_NULL);
+      code.aconst_null();
     } else if (returnType.isPrimitive()) {
-      box(mv, Type.getType(returnType));
+      box(code, returnType);
     }
   }
 

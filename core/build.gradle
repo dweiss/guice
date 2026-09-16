@@ -1,18 +1,7 @@
-import org.objectweb.asm.ClassReader
-import org.objectweb.asm.ClassWriter
-import org.objectweb.asm.commons.ClassRemapper
-import org.objectweb.asm.commons.Remapper
-
 description = 'Google Guice - Core Library'
 ext.osgiModule = 'com.google.inject'
-ext.osgiImportExclusions = ['!org.objectweb.asm.*', '!com.google.inject.*', '!javax.annotation']
+ext.osgiImportExclusions = ['!com.google.inject.*', '!javax.annotation']
 ext.osgiExtraInstructions = ['Eclipse-ExtensibleAPI': 'true']
-
-// ASM is embedded (relocated) into the guice jar by the jarjar task below.
-configurations {
-  dependencyScope('embedded')
-  resolvable('embeddedClasspath') { extendsFrom embedded }
-}
 
 dependencies {
   api libs.jakarta.inject.api
@@ -21,8 +10,6 @@ dependencies {
   api libs.jspecify
   optional libs.jsr305
   optional libs.errorprone.annotations
-  optional libs.asm
-  embedded libs.asm
 
   testImplementation libs.jakarta.inject.tck
   testImplementation libs.guava.testlib
@@ -42,116 +29,3 @@ testVariant('testAnonymousClassLoading', [guice_custom_class_loading: 'ANONYMOUS
 testVariant('testChildClassLoading', [guice_custom_class_loading: 'CHILD'])
 testVariant('testWithoutBytecodeGen', [guice_bytecode_gen_option: 'DISABLED'])
 testVariant('testWindowsLineSeparators', ['line.separator': '\r\n'], showHiddenFrames)
-
-/*
- * JarJar: the published guice jar carries its own copy of ASM under com.google.inject.internal.asm
- * (class names prefixed with '$', only the classes reachable from Guice), and Guice's own classes
- * are rewritten to use it. Classes that don't reference ASM are copied byte for byte.
- * The plain compiled classes are still published under the 'classes' classifier.
- */
-class AsmRelocator extends Remapper {
-  static final String FROM = 'org/objectweb/asm/'
-  static final String TO = 'com/google/inject/internal/asm/'
-  final Set<String> referenced = []
-  boolean relocated = false
-
-  @Override
-  String map(String name) {
-    referenced.add(name)
-    if (!name.startsWith(FROM)) {
-      return name
-    }
-    relocated = true
-    def rest = name.substring(FROM.length())
-    def slash = rest.lastIndexOf('/') + 1
-    def simpleName = rest.substring(slash)
-    return TO + rest.substring(0, slash) + (simpleName ? '$' + simpleName : '')
-  }
-
-  @Override
-  Object mapValue(Object value) {
-    // String constants naming ASM classes or packages (jarjar rewrote those too).
-    if (value instanceof String) {
-      if (value.startsWith(FROM)) {
-        return map(value)
-      }
-      if (value.startsWith(FROM.replace('/', '.'))) {
-        return map(value.replace('.', '/')).replace('/', '.')
-      }
-    }
-    return super.mapValue(value)
-  }
-}
-
-def jarjar = tasks.register('jarjar') {
-  description = 'Relocates ASM into the compiled classes.'
-  def classes = sourceSets.main.output.classesDirs
-  def embeddedJars = configurations.embeddedClasspath
-  def out = layout.buildDirectory.dir('jarjar')
-  inputs.files(classes, embeddedJars)
-  outputs.dir(out)
-  doLast {
-    def outDir = out.get().asFile
-    outDir.deleteDir()
-
-    Map<String, byte[]> embeddedClasses = [:]
-    embeddedJars.files.each { jar ->
-      new java.util.zip.ZipFile(jar).withCloseable { zip ->
-        zip.entries().findAll { it.name.endsWith('.class') && it.name != 'module-info.class' }.each {
-          embeddedClasses[it.name - '.class'] = zip.getInputStream(it).bytes
-        }
-      }
-    }
-    def write = { String name, byte[] bytes ->
-      def file = new File(outDir, name + '.class')
-      file.parentFile.mkdirs()
-      file.bytes = bytes
-    }
-    def relocate = { byte[] bytes ->
-      def relocator = new AsmRelocator()
-      def writer = new ClassWriter(0)
-      new ClassReader(bytes).accept(new ClassRemapper(writer, relocator), 0)
-      [relocator, writer.toByteArray()]
-    }
-
-    Set<String> pending = []
-    classes.asFileTree.matching { include '**/*.class' }.visit { details ->
-      if (!details.directory) {
-        def name = details.relativePath.pathString - '.class'
-        def (relocator, bytes) = relocate(details.file.bytes)
-        write(name, relocator.relocated ? bytes : details.file.bytes)
-        pending.addAll(relocator.referenced.findAll { embeddedClasses.containsKey(it) })
-      }
-    }
-    Set<String> done = []
-    while (pending) {
-      def name = pending.first()
-      pending.remove(name)
-      if (done.add(name)) {
-        def (relocator, bytes) = relocate(embeddedClasses[name])
-        write(relocator.map(name), bytes)
-        pending.addAll(relocator.referenced.findAll { embeddedClasses.containsKey(it) && !done.contains(it) })
-      }
-    }
-  }
-}
-
-// The relocated jar is the main artifact; the plain jar gets the 'classes' classifier.
-jar {
-  archiveClassifier = 'classes'
-}
-def jarjarJar = tasks.register('jarjarJar', Jar) {
-  from jarjar
-  from processResources
-  withOsgiManifest(it)
-}
-['apiElements', 'runtimeElements'].each {
-  configurations.named(it) {
-    outgoing.artifacts.clear()
-    outgoing.artifact(jarjarJar)
-  }
-}
-tasks.named('assemble') { dependsOn jarjarJar }
-publishing.publications.maven {
-  artifact jar
-}
