@@ -1,5 +1,5 @@
 name: 'Local Artifact Tests'
-description: 'Publishes Guice to the local Maven repository and runs the example project against it.'
+description: 'Publishes Guice to the local Maven repository to check that publishing works.'
 
 runs:
   using: "composite"
@@ -11,16 +11,14 @@ runs:
         java-version: ${{ env.USE_JAVA_VERSION }}
         cache: gradle
     - name: 'Delete any stale artifacts'
-      run: rm -rf ~/.m2/repository/com/google/inject
+      run: rm -rf ~/.m2/repository/com/carrotsearch/thirdparty/google/inject
       shell: bash
     - name: 'Publish to the local Maven repository'
       run: ./gradlew publishToMavenLocal --console=plain
       shell: bash
-    - name: 'Build the example against the local artifacts'
-      run: |
-        GUICE_VERSION=$(sed -n 's/^version=//p' gradle.properties)
-        ./gradlew -p examples/guice-demo test --console=plain -Pguice.version="$GUICE_VERSION"
+    - name: 'List the published artifacts'
+      run: find ~/.m2/repository/com/carrotsearch/thirdparty/google/inject -type f | sort
       shell: bash
     - name: 'Clean up'
-      run: rm -rf ~/.m2/repository/com/google/inject
+      run: rm -rf ~/.m2/repository/com/carrotsearch/thirdparty/google/inject
       shell: bash

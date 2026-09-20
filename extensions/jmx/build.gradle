@@ -1,4 +1,4 @@
-description = 'Google Guice - Extensions - JMX'
+description = 'Guice (Carrot Search fork) - Extensions - JMX'
 ext.osgiModule = 'com.google.inject.tools.jmx'
 
 // The only test is not actually a unit test.

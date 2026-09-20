@@ -1,4 +1,4 @@
-description = 'Google Guice - Extensions - Grapher'
+description = 'Guice (Carrot Search fork) - Extensions - Grapher'
 ext.osgiModule = 'com.google.inject.grapher'
 
 dependencies {

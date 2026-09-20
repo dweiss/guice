@@ -1,4 +1,4 @@
-description = 'Google Guice - Extensions - AssistedInject'
+description = 'Guice (Carrot Search fork) - Extensions - AssistedInject'
 ext.osgiModule = 'com.google.inject.assistedinject'
 
 dependencies {

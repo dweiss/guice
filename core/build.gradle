@@ -1,4 +1,4 @@
-description = 'Google Guice - Core Library'
+description = 'Guice (Carrot Search fork) - Core Library'
 ext.osgiModule = 'com.google.inject'
 ext.osgiImportExclusions = ['!com.google.inject.*', '!javax.annotation']
 ext.osgiExtraInstructions = ['Eclipse-ExtensibleAPI': 'true']

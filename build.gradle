@@ -19,6 +19,14 @@ def libs = extensions.libs
 // The spec version of the public Guice API, used for the OSGi Export-Package header.
 def guiceApiVersion = '1.4'
 def guiceDescription = 'Guice is a lightweight dependency injection framework for Java 25 and above'
+// Where this fork lives; used for pom and OSGi metadata.
+def forkRepository = 'github.com/dweiss/guice'
+
+// Copyright lines for the NOTICE files and the javadoc footer. Google's range ends with the year
+// this fork branched off upstream; the fork's own range runs from then to the build year.
+def forkOwner = 'Carrot Search'
+def upstreamYears = '2006-2026'
+def forkYears = ['2026', java.time.Year.now().toString()].unique().join('-')
 def osgiVersion = version.replace('-', '.') // 7.0.1-SNAPSHOT -> 7.0.1.SNAPSHOT
 
 // Shared javadoc settings (per-module javadoc jars and the aggregate docs).
@@ -30,8 +38,8 @@ def javadocOptions = { StandardJavadocDocletOptions options ->
   options.addBooleanOption('Xdoclint:html,syntax', true)
   options.use = true
   options.version = true
-  options.bottom = 'Copyright &#169; 2006&#x2013;' + java.time.Year.now() +
-      ' <a href="http://www.google.com">Google, Inc.</a>. All rights reserved.'
+  options.bottom = "Copyright &#169; ${upstreamYears} Google, Inc. " +
+      "Modifications copyright &#169; ${forkYears} <a href=\"https://${forkRepository}\">${forkOwner}</a>."
   options.links(
       'http://aopalliance.sourceforge.net/doc/',
       'https://guava.dev/releases/snapshot-jre/api/docs/',
@@ -51,13 +59,17 @@ def javadocOptions = { StandardJavadocDocletOptions options ->
   options.group('JMX Extension', ['com.google.inject.tools.jmx'])
 }
 
-def javaProjects = subprojects.findAll { it.name != 'guice-bom' }
+def javaProjects = subprojects.findAll { !(it.name in ['guice-bom', 'guice-demo']) }
 def extensionProjects = javaProjects.findAll { it.projectDir.parentFile.name == 'extensions' }
+// Only these modules are published for now; the extensions are built and tested but not released.
+def publishedProjects = subprojects.findAll { it.name in ['guice', 'guice-bom'] }
 
 subprojects {
-  apply plugin: 'maven-publish'
+  group = 'com.carrotsearch.thirdparty.google.inject'
+}
 
-  group = 'com.google.inject'
+configure(publishedProjects) {
+  apply plugin: 'maven-publish'
 
   publishing {
     publications {
@@ -65,7 +77,7 @@ subprojects {
         pom {
           name = provider { project.description }
           description = guiceDescription
-          url = 'https://github.com/google/guice'
+          url = "https://${forkRepository}"
           inceptionYear = '2006'
           organization {
             name = 'Google, Inc.'
@@ -79,26 +91,17 @@ subprojects {
             }
           }
           scm {
-            connection = 'scm:git:git://github.com/google/guice.git'
-            developerConnection = 'scm:git:ssh://git@github.com/google/guice.git'
-            url = 'https://github.com/google/guice'
+            connection = "scm:git:https://${forkRepository}.git"
+            developerConnection = "scm:git:ssh://git@${forkRepository}.git"
+            url = "https://${forkRepository}"
           }
           issueManagement {
             system = 'Github'
-            url = 'https://github.com/google/guice/issues/'
+            url = "https://${forkRepository}/issues/"
           }
           ciManagement {
             system = 'GitHub Actions'
-            url = 'https://github.com/google/guice/actions'
-          }
-          mailingLists {
-            mailingList {
-              name = 'Guice Users List'
-              archive = 'http://groups.google.com/group/google-guice/topics'
-              subscribe = 'http://groups.google.com/group/google-guice/subscribe'
-              unsubscribe = 'http://groups.google.com/group/google-guice/subscribe'
-              post = 'http://groups.google.com/group/google-guice/post'
-            }
+            url = "https://${forkRepository}/actions"
           }
         }
       }
@@ -220,17 +223,17 @@ configure(javaProjects) {
   }
   testVariant('testStackTracesOff', [guice_include_stack_traces: 'OFF'])
 
-  // META-INF/LICENSE and META-INF/NOTICE in every jar, as the Apache resource bundle added them.
+  // META-INF/LICENSE and META-INF/NOTICE in every jar.
   def moduleName = provider { project.description }
   def notice = tasks.register('notice') {
     def out = layout.buildDirectory.file('notice/NOTICE')
-    def year = java.time.Year.now().toString()
-    inputs.property('name', moduleName)
-    inputs.property('year', year)
+    def text = moduleName.map {
+      "${it}\nCopyright ${upstreamYears} Google, Inc.\nModifications copyright ${forkYears} ${forkOwner}\n"
+    }
+    inputs.property('text', text)
     outputs.file(out)
     doLast {
-      out.get().asFile.text = "\n${moduleName.get()}\nCopyright 2006-${year} Google, Inc.\n\n" +
-          "This product includes software developed at\nThe Apache Software Foundation (http://www.apache.org/).\n\n\n"
+      out.get().asFile.text = text.get()
     }
   }
   def legal = copySpec {
@@ -269,7 +272,7 @@ configure(javaProjects) {
         'Bundle-License': 'http://www.apache.org/licenses/LICENSE-2.0.txt',
         'Bundle-Vendor': 'Google, Inc.',
         'Bundle-Copyright': 'Copyright (C) 2006 Google Inc.',
-        'Bundle-DocURL': 'https://github.com/google/guice',
+        'Bundle-DocURL': "https://${forkRepository}".toString(),
         'Bundle-RequiredExecutionEnvironment': 'JavaSE-25',
         'Import-Package': (project.osgiImportExclusions + ['*']).join(','),
         '-exportcontents': "!*.internal.*,${project.osgiModule}.*;version=${guiceApiVersion}",
@@ -351,32 +354,45 @@ configure(javaProjects) {
     doFirst { options.docTitle = options.windowTitle = title.get() }
   }
 
-  publishing.publications.maven {
-    from components.java
-    artifact testJar
-    artifact testSourcesJar
-    pom.withXml {
-      def dependencies = asNode().dependencies[0] ?: asNode().appendNode('dependencies')
-      def add = { dependency, Closure extra ->
-        def node = dependencies.appendNode('dependency')
-        node.appendNode('groupId', dependency.group)
-        node.appendNode('artifactId', dependency.name)
-        node.appendNode('version', dependency.version)
-        extra(node)
+  pluginManager.withPlugin('maven-publish') {
+    publishing.publications.maven {
+      from components.java
+      artifact testJar
+      artifact testSourcesJar
+      pom.withXml {
+        def dependencies = asNode().dependencies[0] ?: asNode().appendNode('dependencies')
+        def add = { dependency, Closure extra ->
+          def node = dependencies.appendNode('dependency')
+          node.appendNode('groupId', dependency.group)
+          node.appendNode('artifactId', dependency.name)
+          node.appendNode('version', dependency.version)
+          extra(node)
+        }
+        configurations.provided.allDependencies.each { add(it) { node -> node.appendNode('scope', 'provided') } }
+        configurations.optional.allDependencies.each { add(it) { node -> node.appendNode('optional', 'true') } }
       }
-      configurations.provided.allDependencies.each { add(it) { node -> node.appendNode('scope', 'provided') } }
-      configurations.optional.allDependencies.each { add(it) { node -> node.appendNode('optional', 'true') } }
     }
   }
 }
 
 configure(extensionProjects) {
-  group = 'com.google.inject.extensions'
+  group = 'com.carrotsearch.thirdparty.google.inject.extensions'
 
   dependencies {
     api project(':guice')
     testImplementation project(path: ':guice', configuration: 'tests')
     testImplementation libs.guava.testlib
+  }
+}
+
+// The demo declares Guice by its upstream coordinates, like any downstream project would;
+// resolve those to the local projects so it always builds against the current sources.
+project(':guice-demo') {
+  configurations.configureEach {
+    resolutionStrategy.dependencySubstitution {
+      substitute module('com.google.inject:guice') using project(':guice')
+      substitute module('com.google.inject.extensions:guice-testlib') using project(':guice-testlib')
+    }
   }
 }
 
@@ -389,5 +405,5 @@ tasks.register('aggregateJavadoc', Javadoc) {
   destinationDir = layout.buildDirectory.dir('docs/javadoc').get().asFile
   exclude 'com/google/inject/internal/**'
   javadocOptions(options)
-  options.docTitle = options.windowTitle = "Google Guice ${version} API"
+  options.docTitle = options.windowTitle = "Guice (${forkOwner} fork) ${version} API"
 }

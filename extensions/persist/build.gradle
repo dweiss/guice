@@ -1,4 +1,4 @@
-description = 'Google Guice - Extensions - Persist'
+description = 'Guice (Carrot Search fork) - Extensions - Persist'
 ext.osgiModule = 'com.google.inject.persist'
 
 dependencies {

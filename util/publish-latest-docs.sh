@@ -9,9 +9,10 @@ mkdir -p $HOME/guice-docs/latest
 cp -R build/docs/* $HOME/guice-docs/latest/
 
 cd $HOME
-git config --global user.email "guice-dev+github@google.com"
-git config --global user.name "guice-dev+github"
-git clone --quiet --branch=gh-pages https://${GH_TOKEN}@github.com/google/guice gh-pages > /dev/null
+git config --global user.email "github-actions[bot]@users.noreply.github.com"
+git config --global user.name "github-actions[bot]"
+# GITHUB_REPOSITORY (owner/name) is set by GitHub Actions to the repository the workflow runs in.
+git clone --quiet --branch=gh-pages https://${GH_TOKEN}@github.com/${GITHUB_REPOSITORY} gh-pages > /dev/null
 
 cd gh-pages
 if [[ -d api-docs/latest ]]; then

@@ -18,13 +18,24 @@ This branch diverges from upstream Guice in the following ways.
 - Commands:
   - `./gradlew build` compiles, builds all jars and runs every test variant (the surefire executions
     became tasks such as `testStackTracesOff`, `testChildClassLoading`, ...).
-  - `./gradlew publishToMavenLocal`, then `./gradlew -p examples/guice-demo test -Pguice.version=<v>`
-    checks the published artifacts from a consumer project.
+  - `./gradlew publishToMavenLocal` installs the published artifacts locally.
+  - `examples/guice-demo` is part of the build (`:guice-demo`); its upstream `com.google.inject`
+    coordinates are substituted with the local projects.
   - `./gradlew aggregateJavadoc` produces the combined API docs; `./gradlew publish` deploys.
 - Artifacts (jars, sources, test jars, manifests, poms) match what Maven produced, except:
   `META-INF/DEPENDENCIES` is not generated, test-scoped dependencies are not listed in poms,
   javadoc jars carry no timestamps, and the jdiff API reports are no longer published.
-- The GitHub workflow runs the Gradle build, the consumer check and the snapshot/javadoc publish.
+- The GitHub workflow runs the Gradle build, a local publish check and the snapshot/javadoc publish.
+
+## Published artifacts
+
+- Group id is `com.carrotsearch.thirdparty.google.inject`. Java packages and OSGi names are unchanged.
+- Pom metadata (project URL, SCM, issues, CI) and the OSGi `Bundle-DocURL` point at this fork;
+  the upstream mailing list entry was dropped. Organization and bundle vendor remain Google's.
+- Module names read "Guice (Carrot Search fork) - ...". `META-INF/NOTICE` and the javadoc footer keep
+  Google's copyright (2006-2026) and add a line for the fork's modifications.
+- Only `guice` (jar, sources, javadoc, tests, test-sources) and `guice-bom` are published.
+  The extensions are built and tested but not published; the BOM lists only `guice`.
 
 ## No more embedded ASM
 

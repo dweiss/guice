@@ -1,4 +1,4 @@
-description = 'Google Guice - Extensions - Dagger Adapter'
+description = 'Guice (Carrot Search fork) - Extensions - Dagger Adapter'
 ext.osgiModule = 'com.google.inject.daggeradapter'
 
 dependencies {

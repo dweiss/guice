@@ -1,4 +1,4 @@
-description = 'Google Guice - Extensions - Spring'
+description = 'Guice (Carrot Search fork) - Extensions - Spring'
 ext.osgiModule = 'com.google.inject.spring'
 
 dependencies {

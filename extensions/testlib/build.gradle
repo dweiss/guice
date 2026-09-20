@@ -1,4 +1,4 @@
-description = 'Google Guice - Extensions - TestLib'
+description = 'Guice (Carrot Search fork) - Extensions - TestLib'
 ext.osgiModule = 'com.google.inject.testing'
 
 dependencies {
