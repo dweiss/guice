@@ -34,8 +34,13 @@ This branch diverges from upstream Guice in the following ways.
   the upstream mailing list entry was dropped. Organization and bundle vendor remain Google's.
 - Module names read "Guice (Carrot Search fork) - ...". `META-INF/NOTICE` and the javadoc footer keep
   Google's copyright (2006-2026) and add a line for the fork's modifications.
-- Only `guice` (jar, sources, javadoc, tests, test-sources) and `guice-bom` are published.
-  The extensions are built and tested but not published; the BOM lists only `guice`.
+- Artifact ids carry a `jdk25` marker so the jars cannot be mistaken for official builds:
+  `guice-jdk25`, `guice-jdk25-bom` (and `guice-jdk25-<extension>` for the extension jars).
+  Gradle project names are unchanged (`:guice`, `:guice-servlet`, ...).
+- The main and tests jars also carry `Implementation-Title/Version/Vendor/URL` manifest entries
+  naming the fork, and `Bundle-Name` is the artifact id.
+- Only `guice-jdk25` (jar, sources, javadoc, tests, test-sources) and `guice-jdk25-bom` are
+  published. The extensions are built and tested but not published; the BOM lists only `guice-jdk25`.
 
 ## No more embedded ASM
 

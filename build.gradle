@@ -27,6 +27,10 @@ def forkRepository = 'github.com/dweiss/guice'
 def forkOwner = 'Carrot Search'
 def upstreamYears = '2006-2026'
 def forkYears = ['2026', java.time.Year.now().toString()].unique().join('-')
+
+// Artifact ids carry a jdk25 marker so the jars can't be mistaken for official Guice builds:
+// guice -> guice-jdk25, guice-bom -> guice-jdk25-bom, guice-servlet -> guice-jdk25-servlet.
+def artifactId = { Project p -> p.name.replaceFirst('^guice', 'guice-jdk25') }
 def osgiVersion = version.replace('-', '.') // 7.0.1-SNAPSHOT -> 7.0.1.SNAPSHOT
 
 // Shared javadoc settings (per-module javadoc jars and the aggregate docs).
@@ -74,6 +78,7 @@ configure(publishedProjects) {
   publishing {
     publications {
       maven(MavenPublication) {
+        it.artifactId = artifactId(project)
         pom {
           name = provider { project.description }
           description = guiceDescription
@@ -134,6 +139,10 @@ configure(publishedProjects) {
 
 configure(javaProjects) {
   apply plugin: 'java-library'
+
+  base {
+    archivesName = artifactId(project)
+  }
 
   java {
     withSourcesJar()
@@ -267,7 +276,7 @@ configure(javaProjects) {
     def instructions = [
         'Bundle-SymbolicName': project.osgiModule,
         'Bundle-Version': osgiVersion,
-        'Bundle-Name': project.name,
+        'Bundle-Name': artifactId(project),
         'Bundle-Description': guiceDescription,
         'Bundle-License': 'http://www.apache.org/licenses/LICENSE-2.0.txt',
         'Bundle-Vendor': 'Google, Inc.',
@@ -324,7 +333,13 @@ configure(javaProjects) {
   ext.withOsgiManifest = { Jar jarTask ->
     jarTask.dependsOn(osgiManifest)
     jarTask.manifest {
-      attributes('Automatic-Module-Name': automaticModuleName)
+      attributes(
+          'Automatic-Module-Name': automaticModuleName,
+          // Identifies the fork even if the jar is renamed or repackaged.
+          'Implementation-Title': moduleName,
+          'Implementation-Version': project.version,
+          'Implementation-Vendor': forkOwner,
+          'Implementation-URL': "https://${forkRepository}".toString())
       from(osgiManifest.map { it.outputs.files.singleFile })
     }
   }

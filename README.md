@@ -2,7 +2,7 @@ Guice
 ====
 
 > **This is a fork.** It targets JDK 25+, builds with Gradle and is published as
-> `com.carrotsearch.thirdparty.google.inject:guice` (plus `guice-bom`); Java packages are unchanged.
+> `com.carrotsearch.thirdparty.google.inject:guice-jdk25` (plus `guice-jdk25-bom`); Java packages are unchanged.
 > See [README-fork.md](README-fork.md) for the differences. The text below is upstream's and its
 > links, releases and coordinates refer to [google/guice](https://github.com/google/guice).
 >

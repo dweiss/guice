@@ -6,7 +6,7 @@ dependencyResolutionManagement {
   }
 }
 
-// Project names double as Maven artifact ids.
+// Maven artifact ids are derived from these project names in the root build.gradle.
 def module = { String name, String dir ->
   include name
   project(":$name").projectDir = file(dir)
