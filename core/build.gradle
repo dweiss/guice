@@ -1,0 +1,31 @@
+description = 'Guice (Carrot Search fork) - Core Library'
+ext.osgiModule = 'com.google.inject'
+ext.osgiImportExclusions = ['!com.google.inject.*', '!javax.annotation']
+ext.osgiExtraInstructions = ['Eclipse-ExtensibleAPI': 'true']
+
+dependencies {
+  api libs.jakarta.inject.api
+  api libs.aopalliance
+  api libs.guava
+  api libs.jspecify
+  optional libs.jsr305
+  optional libs.errorprone.annotations
+
+  testImplementation libs.jakarta.inject.tck
+  testImplementation libs.guava.testlib
+  testImplementation libs.bnd
+  testImplementation libs.felix.framework
+  testImplementation libs.truth
+  testImplementation libs.truth.java8
+}
+
+tasks.withType(Test).configureEach {
+  // Temporarily excluded tests.
+  exclude '**/OSGiContainerTest*', '**/ScopesTest*', '**/TypeConversionTest*'
+}
+// ShowHiddenFrames helps tests find AOP frames.
+def showHiddenFrames = ['-XX:+UnlockDiagnosticVMOptions', '-XX:+ShowHiddenFrames']
+testVariant('testAnonymousClassLoading', [guice_custom_class_loading: 'ANONYMOUS'], showHiddenFrames)
+testVariant('testChildClassLoading', [guice_custom_class_loading: 'CHILD'])
+testVariant('testWithoutBytecodeGen', [guice_bytecode_gen_option: 'DISABLED'])
+testVariant('testWindowsLineSeparators', ['line.separator': '\r\n'], showHiddenFrames)

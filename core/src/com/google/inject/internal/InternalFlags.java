@@ -15,8 +15,6 @@
  */
 package com.google.inject.internal;
 
-import java.security.AccessController;
-import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.logging.Logger;
 
@@ -30,10 +28,7 @@ public final class InternalFlags {
           IncludeStackTraceOption.ONLY_FOR_DECLARING_SOURCE);
 
   private static final CustomClassLoadingOption CUSTOM_CLASS_LOADING =
-      getSystemOption(
-          "guice_custom_class_loading",
-          CustomClassLoadingOption.BRIDGE,
-          CustomClassLoadingOption.OFF);
+      getSystemOption("guice_custom_class_loading", CustomClassLoadingOption.BRIDGE);
 
   private static final NullableProvidesOption NULLABLE_PROVIDES =
       getSystemOption("guice_check_nullable_provides_params", NullableProvidesOption.ERROR);
@@ -65,7 +60,8 @@ public final class InternalFlags {
   public enum CustomClassLoadingOption {
     /**
      * Define fast/enhanced types in the same class loader as their original type, never creates
-     * class loaders. Uses {@link sun.misc.Unsafe} to gain access to existing class loaders.
+     * class loaders. Requires the original type's package to be open to Guice, which is always the
+     * case for classes on the class path.
      */
     OFF,
 
@@ -74,12 +70,14 @@ public final class InternalFlags {
      * This is faster than regular class loading and the resulting classes are easier to unload.
      *
      * <p>Note: with this option you cannot look up fast/enhanced types by name or mock/spy them.
+     * Like {@link #OFF} it requires the original type's package to be open to Guice.
      */
     ANONYMOUS,
 
     /**
-     * Attempt to define fast/enhanced types in the same class loader as their original type.
-     * Otherwise creates a child class loader whose parent is the original class loader. (Default)
+     * Define fast/enhanced types in the same class loader as their original type when the type's
+     * package is open to Guice. Otherwise creates a child class loader whose parent is the original
+     * class loader. (Default)
      */
     BRIDGE,
 
@@ -177,40 +175,17 @@ public final class InternalFlags {
   }
 
   /**
-   * Gets the system option indicated by the specified key; runs as a privileged action.
+   * Gets the system option indicated by the specified key.
    *
    * @param name of the system option
    * @param defaultValue if the option is not set
    * @return value of the option, defaultValue if not set
    */
-  private static <T extends Enum<T>> T getSystemOption(final String name, T defaultValue) {
-    return getSystemOption(name, defaultValue, defaultValue);
-  }
-
-  /**
-   * Gets the system option indicated by the specified key; runs as a privileged action.
-   *
-   * @param name of the system option
-   * @param defaultValue if the option is not set
-   * @param secureValue if the security manager disallows access to the option
-   * @return value of the option, defaultValue if not set, secureValue if no access
-   */
-  private static <T extends Enum<T>> T getSystemOption(
-      final String name, T defaultValue, T secureValue) {
+  private static <T extends Enum<T>> T getSystemOption(String name, T defaultValue) {
     Class<T> enumType = defaultValue.getDeclaringClass();
-    String value = null;
+    String value = System.getProperty(name);
     try {
-      value =
-          AccessController.doPrivileged(
-              new PrivilegedAction<String>() {
-                @Override
-                public String run() {
-                  return System.getProperty(name);
-                }
-              });
       return (value != null && value.length() > 0) ? Enum.valueOf(enumType, value) : defaultValue;
-    } catch (SecurityException e) {
-      return secureValue;
     } catch (IllegalArgumentException e) {
       logger.warning(
           value

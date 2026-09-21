@@ -1,0 +1,425 @@
+/*
+ * Shared build logic for all Guice modules. Each module's own build.gradle only adds
+ * its dependencies, OSGi symbolic name and any extra test variants.
+ */
+
+buildscript {
+  repositories {
+    mavenCentral()
+  }
+  dependencies {
+    // Same bnd version that maven-bundle-plugin 5.1.8 used, so OSGi manifests stay identical.
+    classpath 'biz.aQute.bnd:biz.aQute.bndlib:6.3.1'
+  }
+}
+
+plugins {
+  // Only the Maven Central publishing plugin is used (applied by class below), not the conventions.
+  alias(libs.plugins.buildinfra) apply false
+}
+
+// Configured further down, see mavenCentralPublishing.
+apply plugin: com.carrotsearch.gradle.buildinfra.publishing.mavencentral.MavenCentralPublishingPlugin
+
+// Captured here so the closures below don't look it up through the parent project.
+def libs = extensions.libs
+
+// The spec version of the public Guice API, used for the OSGi Export-Package header.
+def guiceApiVersion = '1.4'
+def guiceDescription = 'Guice is a lightweight dependency injection framework for Java 25 and above'
+// Where this fork lives; used for pom and OSGi metadata.
+def forkRepository = 'github.com/dweiss/guice'
+
+// Copyright lines for the NOTICE files and the javadoc footer. Google's range ends with the year
+// this fork branched off upstream; the fork's own range runs from then to the build year.
+def forkOwner = 'Carrot Search'
+def upstreamYears = '2006-2026'
+def forkYears = ['2026', java.time.Year.now().toString()].unique().join('-')
+
+// Artifact ids carry a jdk25 marker so the jars can't be mistaken for official Guice builds:
+// guice -> guice-jdk25, guice-bom -> guice-jdk25-bom, guice-servlet -> guice-jdk25-servlet.
+def artifactId = { Project p -> p.name.replaceFirst('^guice', 'guice-jdk25') }
+def osgiVersion = version.replace('-', '.') // 7.0.1-SNAPSHOT -> 7.0.1.SNAPSHOT
+
+// Shared javadoc settings (per-module javadoc jars and the aggregate docs).
+def javadocOptions = { StandardJavadocDocletOptions options ->
+  options.source = '25'
+  options.encoding = 'UTF-8'
+  options.charSet = 'UTF-8'
+  options.docEncoding = 'UTF-8'
+  options.addBooleanOption('Xdoclint:html,syntax', true)
+  options.use = true
+  options.version = true
+  options.bottom = "Copyright &#169; ${upstreamYears} Google, Inc. " +
+      "Modifications copyright &#169; ${forkYears} <a href=\"https://${forkRepository}\">${forkOwner}</a>."
+  options.links(
+      'http://aopalliance.sourceforge.net/doc/',
+      'https://guava.dev/releases/snapshot-jre/api/docs/',
+      'https://tomcat.apache.org/tomcat-5.5-doc/servletapi/')
+  options.group('Guice Core', ['com.google.inject', 'com.google.inject.util', 'com.google.inject.spi',
+      'com.google.inject.name', 'com.google.inject.matcher', 'com.google.inject.binder',
+      'com.google.inject.multibindings'])
+  options.group('Servlet Extension', ['com.google.inject.servlet'])
+  options.group('AssistedInject Extension', ['com.google.inject.assistedinject'])
+  options.group('Dagger Adapter', ['com.google.inject.daggeradapter'])
+  options.group('ThrowingProviders Extension', ['com.google.inject.throwingproviders'])
+  options.group('Test Libraries Extension', ['com.google.inject.testing.*'])
+  options.group('Grapher Extension', ['com.google.inject.grapher', 'com.google.inject.grapher.*'])
+  options.group('Persist Extension', ['com.google.inject.persist', 'com.google.inject.persist.*'])
+  options.group('Spring Extension', ['com.google.inject.spring'])
+  options.group('JNDI Extension', ['com.google.inject.jndi'])
+  options.group('JMX Extension', ['com.google.inject.tools.jmx'])
+}
+
+def javaProjects = subprojects.findAll { !(it.name in ['guice-bom', 'guice-demo']) }
+def extensionProjects = javaProjects.findAll { it.projectDir.parentFile.name == 'extensions' }
+// Only these modules are published for now; the extensions are built and tested but not released.
+def publishedProjects = [':guice', ':guice-bom']
+
+subprojects {
+  group = 'com.carrotsearch.thirdparty.google.inject'
+}
+
+// Publishing to Maven Central (via Sonatype's Central Portal): a bundle upload for releases, the
+// snapshot repository for snapshots.
+//
+//   ./gradlew publishToMavenCentral
+//
+// 'publishLocal' and 'prepareMavenCentralBundle' can be used to inspect what would be published
+// (build/maven, build/maven-bundle). The plugin creates the 'jars' publication of java projects.
+mavenCentralPublishing {
+  bundleName = 'guice-jdk25'
+
+  // Publish only poms and jars, like the Maven build did.
+  gradleModuleMetadata = false
+
+  pom {
+    description = guiceDescription
+    url = "https://${forkRepository}"
+    inceptionYear = '2006'
+    organization {
+      name = 'Google, Inc.'
+      url = 'http://www.google.com'
+    }
+    licenses {
+      license {
+        name = 'The Apache Software License, Version 2.0'
+        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+        distribution = 'repo'
+      }
+    }
+    developers {
+      developer {
+        id = 'dawid.weiss'
+        name = 'Dawid Weiss'
+        email = 'dawid.weiss@carrotsearch.com'
+      }
+    }
+    scm {
+      connection = "scm:git:https://${forkRepository}.git"
+      developerConnection = "scm:git:ssh://git@${forkRepository}.git"
+      url = "https://${forkRepository}"
+    }
+    issueManagement {
+      system = 'Github'
+      url = "https://${forkRepository}/issues/"
+    }
+    ciManagement {
+      system = 'GitHub Actions'
+      url = "https://${forkRepository}/actions"
+    }
+  }
+
+  publishedProjects.each { path ->
+    project(path) {
+      pom {
+        name = rootProject.project(path).description
+      }
+    }
+  }
+}
+
+configure(javaProjects) {
+  apply plugin: 'java-library'
+
+  base {
+    archivesName = artifactId(project)
+  }
+
+  java {
+    withSourcesJar()
+    withJavadocJar()
+  }
+
+  // Ant-style layout: src/ and test/ hold both sources and resources.
+  sourceSets {
+    main {
+      java.srcDirs = ['src']
+      resources {
+        srcDirs = ['src']
+        exclude '**/*.java'
+      }
+    }
+    test {
+      java.srcDirs = ['test']
+      resources {
+        srcDirs = ['test']
+        exclude '**/*.java'
+      }
+    }
+  }
+
+  // Maven-style scopes: 'provided' is available for compiling and testing but not published as a
+  // runtime dependency; 'optional' is a compile dependency marked optional in the pom.
+  configurations {
+    dependencyScope('provided')
+    dependencyScope('optional')
+    compileClasspath { extendsFrom provided, optional }
+    testCompileClasspath { extendsFrom provided, optional }
+    testRuntimeClasspath { extendsFrom provided, optional }
+    runtimeClasspath { extendsFrom optional }
+    // Direct optional dependencies only; their packages become optional OSGi imports.
+    resolvable('optionalClasspath') {
+      extendsFrom optional
+      transitive = false
+    }
+    // Guava pulls in a newer error_prone_annotations; stick to the declared version, as Maven did.
+    configureEach { resolutionStrategy.force libs.errorprone.annotations.get() }
+  }
+
+  dependencies {
+    testImplementation libs.junit
+  }
+
+  tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+    options.compilerArgs.add('-parameters')
+    // javac skips package-info.java files without annotations; maven-compiler-plugin wrote an empty
+    // package-info.class for those, so do the same to keep the jars identical.
+    doLast {
+      source.matching { include '**/package-info.java' }.visit { details ->
+        def classFile = new File(destinationDirectory.get().asFile, details.relativePath.pathString - '.java' + '.class')
+        if (!details.directory && !classFile.exists()) {
+          def classFile_ = java.lang.classfile.ClassFile
+          classFile.bytes = classFile_.of().build(
+              java.lang.constant.ClassDesc.ofInternalName(details.relativePath.pathString - '.java')) { cb ->
+            cb.withVersion(classFile_.JAVA_25_VERSION, 0)
+            cb.withFlags(classFile_.ACC_INTERFACE | classFile_.ACC_ABSTRACT | classFile_.ACC_SYNTHETIC)
+            cb.with(java.lang.classfile.attribute.SourceFileAttribute.of('package-info.java'))
+          }
+        }
+      }
+    }
+  }
+
+  // Tests: the same class name patterns surefire used. The default 'test' task and each extra
+  // variant registered with testVariant() run the whole suite with different settings.
+  tasks.withType(Test).configureEach {
+    useJUnit()
+    include '**/Test*.class', '**/*Test.class', '**/*TestCase.class'
+    exclude '**/*$*.class'
+  }
+  test {
+    systemProperty 'guice_include_stack_traces', 'ONLY_FOR_DECLARING_SOURCE'
+  }
+  ext.testVariant = { String taskName, Map<String, String> properties, List<String> args = [] ->
+    def variant = tasks.register(taskName, Test) {
+      testClassesDirs = sourceSets.test.output.classesDirs
+      classpath = sourceSets.test.runtimeClasspath
+      systemProperties(properties)
+      jvmArgs(args)
+    }
+    tasks.named('check') { dependsOn variant }
+  }
+  testVariant('testStackTracesOff', [guice_include_stack_traces: 'OFF'])
+
+  // META-INF/LICENSE and META-INF/NOTICE in every jar.
+  def moduleName = provider { project.description }
+  def notice = tasks.register('notice') {
+    def out = layout.buildDirectory.file('notice/NOTICE')
+    def text = moduleName.map {
+      "${it}\nCopyright ${upstreamYears} Google, Inc.\nModifications copyright ${forkYears} ${forkOwner}\n"
+    }
+    inputs.property('text', text)
+    outputs.file(out)
+    doLast {
+      out.get().asFile.text = text.get()
+    }
+  }
+  def legal = copySpec {
+    into('META-INF') {
+      from(rootProject.file('COPYING')) { rename { 'LICENSE' } }
+      from(notice)
+    }
+  }
+  tasks.withType(Jar).configureEach {
+    with legal
+  }
+  tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+  }
+
+  // OSGi manifest, computed by bnd from the compiled classes. Extensions are fragments of the core bundle.
+  ext.automaticModuleName = project.name == 'guice'
+      ? 'com.google.guice'
+      : "com.google.guice.extensions.${project.name.replace('guice-', '').replace('-', '')}"
+  ext.osgiImportExclusions = ['!com.google.inject.*', '!javax.annotation']
+  ext.optionalPackages = {
+    configurations.optionalClasspath.files.collectMany { jar ->
+      new java.util.zip.ZipFile(jar).withCloseable { zip ->
+        zip.entries().findAll { it.name.endsWith('.class') && it.name.contains('/') && !it.name.startsWith('META-INF/') }
+            .collect { it.name.substring(0, it.name.lastIndexOf('/')).replace('/', '.') }
+      }
+    }.toSet()
+  }
+  ext.osgiInstructions = {
+    def instructions = [
+        'Bundle-SymbolicName': project.osgiModule,
+        'Bundle-Version': osgiVersion,
+        'Bundle-Name': artifactId(project),
+        'Bundle-Description': guiceDescription,
+        'Bundle-License': 'http://www.apache.org/licenses/LICENSE-2.0.txt',
+        'Bundle-Vendor': 'Google, Inc.',
+        'Bundle-Copyright': 'Copyright (C) 2006 Google Inc.',
+        'Bundle-DocURL': "https://${forkRepository}".toString(),
+        'Bundle-RequiredExecutionEnvironment': 'JavaSE-25',
+        'Import-Package': (project.osgiImportExclusions + ['*']).join(','),
+        '-exportcontents': "!*.internal.*,${project.osgiModule}.*;version=${guiceApiVersion}",
+        '-consumer-policy': '$(version;==;$(@))',
+        '-nouses': 'true',
+        '-removeheaders': 'Embed-Dependency,Embed-Transitive,Built-By,Tool,Created-By,Build-Jdk,' +
+            'Originally-Created-By,Archiver-Version,Include-Resource,Private-Package,Ignore-Package,Bnd-LastModified',
+    ]
+    if (project in extensionProjects) {
+      instructions['Fragment-Host'] = "com.google.inject;bundle-version=${osgiVersion}"
+    }
+    instructions + (project.findProperty('osgiExtraInstructions') ?: [:])
+  }
+  def osgiManifest = tasks.register('osgiManifest') {
+    def bundleName = project.name
+    def classes = sourceSets.main.output.classesDirs
+    def classpath = configurations.compileClasspath
+    def instructions = provider { osgiInstructions() }
+    def optional = provider { optionalPackages() }
+    def out = layout.buildDirectory.file('osgi/MANIFEST.MF')
+    inputs.files(classes, classpath, configurations.optionalClasspath)
+    inputs.property('instructions', instructions)
+    outputs.file(out)
+    doLast {
+      def analyzer = new aQute.bnd.osgi.Analyzer()
+      try {
+        analyzer.setJar(new aQute.bnd.osgi.Jar(bundleName, classes.singleFile))
+        analyzer.setClasspath(classpath.files as File[])
+        analyzer.setProperties(new Properties().tap {
+          instructions.get().each { key, value -> setProperty(key.toString(), value.toString()) }
+        })
+        def manifest = analyzer.calcManifest()
+        if (analyzer.errors) {
+          throw new GradleException("bnd failed for ${bundleName}: ${analyzer.errors}")
+        }
+        // Imports satisfied by optional dependencies are optional themselves (as maven-bundle-plugin did).
+        def imports = new aQute.bnd.header.Parameters(manifest.mainAttributes.getValue('Import-Package'))
+        imports.each { pkg, attrs -> if (pkg in optional.get()) attrs.put('resolution:', 'optional') }
+        manifest.mainAttributes.putValue('Import-Package', imports.toString())
+        // bnd writes headers sorted by name; do the same so the result is stable.
+        def sorted = new java.util.jar.Manifest()
+        manifest.mainAttributes.entrySet().sort { it.key.toString() }.each { sorted.mainAttributes.put(it.key, it.value) }
+        out.get().asFile.withOutputStream { sorted.write(it) }
+      } finally {
+        analyzer.close()
+      }
+    }
+  }
+  ext.withOsgiManifest = { Jar jarTask ->
+    jarTask.dependsOn(osgiManifest)
+    jarTask.manifest {
+      attributes(
+          'Automatic-Module-Name': automaticModuleName,
+          // Identifies the fork even if the jar is renamed or repackaged.
+          'Implementation-Title': moduleName,
+          'Implementation-Version': project.version,
+          'Implementation-Vendor': forkOwner,
+          'Implementation-URL': "https://${forkRepository}".toString())
+      from(osgiManifest.map { it.outputs.files.singleFile })
+    }
+  }
+  tasks.named('jar', Jar) { withOsgiManifest(it) }
+
+  // Test classes and test sources jars; extensions' tests use the core test jar.
+  def testJar = tasks.register('testJar', Jar) {
+    archiveClassifier = 'tests'
+    from sourceSets.test.output
+    withOsgiManifest(it)
+  }
+  def testSourcesJar = tasks.register('testSourcesJar', Jar) {
+    archiveClassifier = 'test-sources'
+    from sourceSets.test.allSource
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE // src and resources share a directory
+  }
+  tasks.named('assemble') { dependsOn testJar, testSourcesJar }
+  configurations.consumable('tests')
+  artifacts {
+    tests testJar
+  }
+
+  javadoc {
+    exclude 'com/google/inject/internal/**'
+    javadocOptions(options)
+    def title = moduleName.map { "${it} ${version} API" }
+    doFirst { options.docTitle = options.windowTitle = title.get() }
+  }
+
+  pluginManager.withPlugin('maven-publish') {
+    publishing.publications.jars {
+      artifact testJar
+      artifact testSourcesJar
+      pom.withXml {
+        def dependencies = asNode().dependencies[0] ?: asNode().appendNode('dependencies')
+        def add = { dependency, Closure extra ->
+          def node = dependencies.appendNode('dependency')
+          node.appendNode('groupId', dependency.group)
+          node.appendNode('artifactId', dependency.name)
+          node.appendNode('version', dependency.version)
+          extra(node)
+        }
+        configurations.provided.allDependencies.each { add(it) { node -> node.appendNode('scope', 'provided') } }
+        configurations.optional.allDependencies.each { add(it) { node -> node.appendNode('optional', 'true') } }
+      }
+    }
+  }
+}
+
+configure(extensionProjects) {
+  group = 'com.carrotsearch.thirdparty.google.inject.extensions'
+
+  dependencies {
+    api project(':guice')
+    testImplementation project(path: ':guice', configuration: 'tests')
+    testImplementation libs.guava.testlib
+  }
+}
+
+// The demo declares Guice by its upstream coordinates, like any downstream project would;
+// resolve those to the local projects so it always builds against the current sources.
+project(':guice-demo') {
+  configurations.configureEach {
+    resolutionStrategy.dependencySubstitution {
+      substitute module('com.google.inject:guice') using project(':guice')
+      substitute module('com.google.inject.extensions:guice-testlib') using project(':guice-testlib')
+    }
+  }
+}
+
+// Combined API docs for all modules, published to the gh-pages branch by util/publish-latest-docs.sh.
+tasks.register('aggregateJavadoc', Javadoc) {
+  description = 'Generates the combined API docs for all modules.'
+  group = 'documentation'
+  source { javaProjects.collect { it.sourceSets.main.allJava } }
+  classpath = files({ javaProjects.collect { it.sourceSets.main.compileClasspath } })
+  destinationDir = layout.buildDirectory.dir('docs/javadoc').get().asFile
+  exclude 'com/google/inject/internal/**'
+  javadocOptions(options)
+  options.docTitle = options.windowTitle = "Guice (${forkOwner} fork) ${version} API"
+}

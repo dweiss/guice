@@ -40,13 +40,6 @@ final class ErrorMessageTestUtils {
 
   private static String getExpectedError(String fileName) throws IOException {
     URL resource = ErrorMessageTestUtils.class.getResource("testdata/" + fileName);
-    // The location of the resource depends on if we are using maven or bazel.
-    // TODO: remove this once we no longer use maven.
-    if (resource == null) {
-      resource =
-          ErrorMessageTestUtils.class.getResource(
-              "/core/test/com/google/inject/errors/testdata/" + fileName);
-    }
     String expectedError = Resources.toString(resource, UTF_8);
     return expectedError;
   }

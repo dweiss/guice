@@ -1,0 +1,23 @@
+rootProject.name = 'guice-parent'
+
+dependencyResolutionManagement {
+  repositories {
+    mavenCentral()
+  }
+}
+
+// Maven artifact ids are derived from these project names in the root build.gradle.
+def module = { String name, String dir ->
+  include name
+  project(":$name").projectDir = file(dir)
+}
+
+module 'guice-bom', 'bom'
+module 'guice', 'core'
+['assistedinject', 'dagger-adapter', 'grapher', 'jmx', 'jndi', 'persist',
+ 'servlet', 'spring', 'testlib', 'throwingproviders'].each {
+  module "guice-$it", "extensions/$it"
+}
+
+// A small consumer of Guice, kept as it would look in a downstream project (see build.gradle).
+module 'guice-demo', 'examples/guice-demo'

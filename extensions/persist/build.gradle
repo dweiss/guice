@@ -1,0 +1,13 @@
+description = 'Guice (Carrot Search fork) - Extensions - Persist'
+ext.osgiModule = 'com.google.inject.persist'
+
+dependencies {
+  provided libs.jakarta.persistence.api
+  provided libs.jakarta.servlet.api
+  testImplementation libs.slf4j.simple
+  testImplementation libs.hibernate.core
+  testImplementation libs.hsqldb
+  testImplementation libs.mockito.core
+  testImplementation libs.hamcrest.library
+  testImplementation libs.hamcrest.core
+}

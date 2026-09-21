@@ -160,8 +160,6 @@ final class ProvidesMethodScanner extends ModuleAnnotatedMethodScanner {
         return new TypeAndValue(returnType, valueMethod.invoke(mapKeyAnnotation));
       } catch (NoSuchMethodException e) {
         throw new IllegalStateException(e);
-      } catch (SecurityException e) {
-        throw new IllegalStateException(e);
       } catch (IllegalAccessException e) {
         throw new IllegalStateException(e);
       } catch (InvocationTargetException e) {

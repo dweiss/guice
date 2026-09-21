@@ -1,0 +1,7 @@
+description = 'Guice (Carrot Search fork) - Extensions - AssistedInject'
+ext.osgiModule = 'com.google.inject.assistedinject'
+
+dependencies {
+  api libs.errorprone.annotations
+  testImplementation libs.truth
+}

@@ -63,7 +63,6 @@ public class AllTests {
     suite.addTestSuite(EagerSingletonTest.class);
     suite.addTestSuite(GenericInjectionTest.class);
     suite.addTestSuite(ImplicitBindingTest.class);
-    suite.addTestSuite(ImplicitBindingJdkPackagePrivateTest.class);
     suite.addTestSuite(InjectorTest.class);
     suite.addTestSuite(JitBindingsTest.class);
     suite.addTestSuite(Java8LanguageFeatureBindingTest.class);

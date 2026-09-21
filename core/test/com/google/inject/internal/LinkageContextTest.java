@@ -143,7 +143,7 @@ public final class LinkageContextTest {
               return castReturnToObject(
                   MethodHandles.foldArguments(
                       recursiveHandle,
-                      InternalMethodHandles.dropReturn(
+                      MethodHandles.dropReturn(
                           MethodHandles.insertArguments(DETECTS_CYCLE_HANDLE, 2, callCount))));
             });
     factoryReference.set(factory);

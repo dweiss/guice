@@ -1,0 +1,6 @@
+description = 'Guice (Carrot Search fork) - Extensions - Grapher'
+ext.osgiModule = 'com.google.inject.grapher'
+
+dependencies {
+  api project(':guice-assistedinject')
+}

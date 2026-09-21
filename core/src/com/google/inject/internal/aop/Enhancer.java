@@ -18,54 +18,56 @@ package com.google.inject.internal.aop;
 
 import static com.google.inject.internal.BytecodeGen.ENHANCER_BY_GUICE_MARKER;
 import static com.google.inject.internal.aop.BytecodeTasks.box;
+import static com.google.inject.internal.aop.BytecodeTasks.classDesc;
+import static com.google.inject.internal.aop.BytecodeTasks.exceptionTypes;
 import static com.google.inject.internal.aop.BytecodeTasks.loadArgument;
+import static com.google.inject.internal.aop.BytecodeTasks.methodType;
 import static com.google.inject.internal.aop.BytecodeTasks.packArguments;
-import static com.google.inject.internal.aop.BytecodeTasks.pushInteger;
 import static com.google.inject.internal.aop.BytecodeTasks.unbox;
 import static com.google.inject.internal.aop.BytecodeTasks.unpackArguments;
-import static java.lang.reflect.Modifier.ABSTRACT;
-import static java.lang.reflect.Modifier.FINAL;
-import static java.lang.reflect.Modifier.NATIVE;
-import static java.lang.reflect.Modifier.PRIVATE;
-import static java.lang.reflect.Modifier.PUBLIC;
-import static java.lang.reflect.Modifier.STATIC;
-import static java.lang.reflect.Modifier.SYNCHRONIZED;
-import static org.objectweb.asm.ClassWriter.COMPUTE_MAXS;
-import static org.objectweb.asm.Opcodes.AALOAD;
-import static org.objectweb.asm.Opcodes.ACC_SUPER;
-import static org.objectweb.asm.Opcodes.ACONST_NULL;
-import static org.objectweb.asm.Opcodes.ALOAD;
-import static org.objectweb.asm.Opcodes.ARETURN;
-import static org.objectweb.asm.Opcodes.CHECKCAST;
-import static org.objectweb.asm.Opcodes.DUP;
-import static org.objectweb.asm.Opcodes.GETFIELD;
-import static org.objectweb.asm.Opcodes.H_INVOKESTATIC;
-import static org.objectweb.asm.Opcodes.INVOKEINTERFACE;
-import static org.objectweb.asm.Opcodes.INVOKESPECIAL;
-import static org.objectweb.asm.Opcodes.INVOKESTATIC;
-import static org.objectweb.asm.Opcodes.INVOKEVIRTUAL;
-import static org.objectweb.asm.Opcodes.IRETURN;
-import static org.objectweb.asm.Opcodes.NEW;
-import static org.objectweb.asm.Opcodes.PUTFIELD;
-import static org.objectweb.asm.Opcodes.PUTSTATIC;
-import static org.objectweb.asm.Opcodes.RETURN;
-import static org.objectweb.asm.Opcodes.SWAP;
-import static org.objectweb.asm.Opcodes.V1_8;
+import static java.lang.classfile.ClassFile.ACC_ABSTRACT;
+import static java.lang.classfile.ClassFile.ACC_FINAL;
+import static java.lang.classfile.ClassFile.ACC_NATIVE;
+import static java.lang.classfile.ClassFile.ACC_PRIVATE;
+import static java.lang.classfile.ClassFile.ACC_PUBLIC;
+import static java.lang.classfile.ClassFile.ACC_STATIC;
+import static java.lang.classfile.ClassFile.ACC_SUPER;
+import static java.lang.classfile.ClassFile.ACC_SYNCHRONIZED;
+import static java.lang.constant.ConstantDescs.CD_CallSite;
+import static java.lang.constant.ConstantDescs.CD_MethodHandle;
+import static java.lang.constant.ConstantDescs.CD_MethodHandles;
+import static java.lang.constant.ConstantDescs.CD_MethodHandles_Lookup;
+import static java.lang.constant.ConstantDescs.CD_MethodType;
+import static java.lang.constant.ConstantDescs.CD_Object;
+import static java.lang.constant.ConstantDescs.CD_String;
+import static java.lang.constant.ConstantDescs.CD_int;
+import static java.lang.constant.ConstantDescs.CLASS_INIT_NAME;
+import static java.lang.constant.ConstantDescs.INIT_NAME;
+import static java.lang.constant.ConstantDescs.MTD_void;
 
+import java.lang.classfile.ClassBuilder;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.CodeBuilder;
+import java.lang.classfile.MethodBuilder;
+import java.lang.classfile.TypeKind;
+import java.lang.classfile.attribute.ExceptionsAttribute;
+import java.lang.classfile.attribute.SourceFileAttribute;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.DirectMethodHandleDesc;
+import java.lang.constant.MethodHandleDesc;
+import java.lang.constant.MethodTypeDesc;
+import java.lang.invoke.LambdaMetafactory;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Handle;
-import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Type;
+import java.util.function.BiFunction;
 
 /**
  * Generates enhanced classes.
@@ -124,288 +126,268 @@ final class Enhancer extends AbstractGlueGenerator {
 
   private static final String HANDLERS_NAME = "GUICE$HANDLERS";
 
-  private static final String HANDLERS_DESCRIPTOR = "[Ljava/lang/reflect/InvocationHandler;";
+  private static final ClassDesc HANDLER_TYPE = classDesc(InvocationHandler.class);
 
-  private static final String HANDLER_TYPE = Type.getInternalName(InvocationHandler.class);
-
-  private static final String HANDLER_ARRAY_TYPE = Type.getInternalName(InvocationHandler[].class);
+  private static final ClassDesc HANDLERS_TYPE = HANDLER_TYPE.arrayType();
 
   private static final String INVOKERS_NAME = "GUICE$INVOKERS";
 
-  private static final String INVOKERS_DESCRIPTOR = "Ljava/lang/invoke/MethodHandle;";
-
-  private static final String CALLBACK_DESCRIPTOR =
-      "(Ljava/lang/Object;"
-          + "Ljava/lang/reflect/Method;"
-          + "[Ljava/lang/Object;)"
-          + "Ljava/lang/Object;";
+  private static final MethodTypeDesc CALLBACK_TYPE =
+      MethodTypeDesc.of(CD_Object, CD_Object, classDesc(Method.class), CD_Object.arrayType());
 
   // Describes the LambdaMetafactory.metafactory method arguments and return type
-  private static final String METAFACTORY_DESCRIPTOR =
-      "(Ljava/lang/invoke/MethodHandles$Lookup;"
-          + "Ljava/lang/String;"
-          + "Ljava/lang/invoke/MethodType;"
-          + "Ljava/lang/invoke/MethodType;"
-          + "Ljava/lang/invoke/MethodHandle;"
-          + "Ljava/lang/invoke/MethodType;)"
-          + "Ljava/lang/invoke/CallSite;";
+  private static final MethodTypeDesc METAFACTORY_TYPE =
+      MethodTypeDesc.of(
+          CD_CallSite,
+          CD_MethodHandles_Lookup,
+          CD_String,
+          CD_MethodType,
+          CD_MethodType,
+          CD_MethodHandle,
+          CD_MethodType);
 
-  private static final Type INDEX_TO_INVOKER_METHOD_TYPE =
-      Type.getMethodType("(I)Ljava/util/function/BiFunction;");
+  private static final MethodTypeDesc INDEX_TO_INVOKER_METHOD_TYPE =
+      MethodTypeDesc.of(classDesc(BiFunction.class), CD_int);
 
-  private static final Type RAW_INVOKER_METHOD_TYPE =
-      Type.getMethodType("(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+  private static final MethodTypeDesc RAW_INVOKER_METHOD_TYPE =
+      MethodTypeDesc.of(CD_Object, CD_Object, CD_Object);
 
-  private static final Type INVOKER_METHOD_TYPE =
-      Type.getMethodType("(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
+  private static final MethodTypeDesc INVOKER_METHOD_TYPE =
+      MethodTypeDesc.of(CD_Object, CD_Object, CD_Object.arrayType());
 
   private final Map<Method, Method> bridgeDelegates;
-
-  private final String checkcastToProxy;
 
   Enhancer(Class<?> hostClass, Map<Method, Method> bridgeDelegates) {
     super(hostClass, ENHANCER_BY_GUICE_MARKER);
     this.bridgeDelegates = bridgeDelegates;
-
-    // with defineAnonymousClass we can't downcast to the proxy and must use host instead
-    this.checkcastToProxy = ClassDefining.canDowncastToProxy(hostClass) ? proxyName : hostName;
   }
 
   @Override
   protected byte[] generateGlue(Collection<Executable> members) {
-    ClassWriter cw = new ClassWriter(COMPUTE_MAXS);
+    return ClassFile.of()
+        .build(
+            proxyType,
+            cb -> {
+              // target Java8 because that's all we need for the generated trampoline code
+              cb.withVersion(ClassFile.JAVA_8_VERSION, 0);
+              cb.withFlags(ACC_PUBLIC | ACC_SUPER);
+              cb.withSuperclass(hostType);
+              cb.with(SourceFileAttribute.of(GENERATED_SOURCE));
 
-    // target Java8 because that's all we need for the generated trampoline code
-    cw.visit(V1_8, PUBLIC | ACC_SUPER, proxyName, null, hostName, null);
-    cw.visitSource(GENERATED_SOURCE, null);
+              // this shared field either contains the trampoline or glue to make it into an
+              // invoker table
+              cb.withField(INVOKERS_NAME, CD_MethodHandle, ACC_PUBLIC | ACC_STATIC | ACC_FINAL);
 
-    // this shared field either contains the trampoline or glue to make it into an invoker table
-    cw.visitField(PUBLIC | STATIC | FINAL, INVOKERS_NAME, INVOKERS_DESCRIPTOR, null, null)
-        .visitEnd();
+              setupInvokerTable(cb);
 
-    setupInvokerTable(cw);
+              generateTrampoline(cb, members);
 
-    generateTrampoline(cw, members);
+              // this field will hold the handlers configured for this particular enhanced instance
+              cb.withField(HANDLERS_NAME, HANDLERS_TYPE, ACC_PRIVATE | ACC_FINAL);
 
-    // this field will hold the handlers configured for this particular enhanced instance
-    cw.visitField(PRIVATE | FINAL, HANDLERS_NAME, HANDLERS_DESCRIPTOR, null, null).visitEnd();
+              Set<Method> remainingBridgeMethods = new HashSet<>(bridgeDelegates.keySet());
 
-    Set<Method> remainingBridgeMethods = new HashSet<>(bridgeDelegates.keySet());
+              int methodIndex = 0;
+              for (Executable member : members) {
+                if (member instanceof Constructor<?> constructor) {
+                  enhanceConstructor(cb, constructor);
+                } else {
+                  enhanceMethod(cb, (Method) member, methodIndex++);
+                  remainingBridgeMethods.remove(member);
+                }
+              }
 
-    int methodIndex = 0;
-    for (Executable member : members) {
-      if (member instanceof Constructor<?>) {
-        enhanceConstructor(cw, (Constructor<?>) member);
-      } else {
-        enhanceMethod(cw, (Method) member, methodIndex++);
-        remainingBridgeMethods.remove(member);
-      }
-    }
-
-    // replace any remaining bridge methods with virtual dispatch to their non-bridge targets
-    for (Method method : remainingBridgeMethods) {
-      Method target = bridgeDelegates.get(method);
-      if (target != null) {
-        generateVirtualBridge(cw, method, target);
-      }
-    }
-
-    cw.visitEnd();
-    return cw.toByteArray();
+              // replace any remaining bridge methods with virtual dispatch to their non-bridge
+              // targets
+              for (Method method : remainingBridgeMethods) {
+                Method target = bridgeDelegates.get(method);
+                if (target != null) {
+                  generateVirtualBridge(cb, method, target);
+                }
+              }
+            });
   }
 
   /** Generate static initializer to setup invoker table based on the trampoline. */
-  private void setupInvokerTable(ClassWriter cw) {
-    MethodVisitor mv = cw.visitMethod(PRIVATE | STATIC, "<clinit>", "()V", null, null);
-    mv.visitCode();
+  private void setupInvokerTable(ClassBuilder cb) {
+    cb.withMethodBody(
+        CLASS_INIT_NAME,
+        MTD_void,
+        ACC_PRIVATE | ACC_STATIC,
+        code -> {
+          DirectMethodHandleDesc trampolineHandle =
+              MethodHandleDesc.ofMethod(
+                  DirectMethodHandleDesc.Kind.STATIC, proxyType, TRAMPOLINE_NAME, TRAMPOLINE_TYPE);
 
-    Handle trampolineHandle =
-        new Handle(H_INVOKESTATIC, proxyName, TRAMPOLINE_NAME, TRAMPOLINE_DESCRIPTOR, false);
+          if (ClassDefining.canLoadProxyByName(hostClass)) {
+            // generate lambda glue to make the raw trampoline look like an invoker table
 
-    if (ClassDefining.canLoadProxyByName(hostClass)) {
-      // generate lambda glue to make the raw trampoline look like an invoker table
+            code.invokestatic(
+                CD_MethodHandles, "lookup", MethodTypeDesc.of(CD_MethodHandles_Lookup));
 
-      mv.visitMethodInsn(
-          INVOKESTATIC,
-          "java/lang/invoke/MethodHandles",
-          "lookup",
-          "()Ljava/lang/invoke/MethodHandles$Lookup;",
-          false);
+            code.loadConstant("apply");
+            code.loadConstant(INDEX_TO_INVOKER_METHOD_TYPE);
+            code.loadConstant(RAW_INVOKER_METHOD_TYPE);
+            code.loadConstant(trampolineHandle);
+            code.loadConstant(INVOKER_METHOD_TYPE);
 
-      mv.visitLdcInsn("apply");
-      mv.visitLdcInsn(INDEX_TO_INVOKER_METHOD_TYPE);
-      mv.visitLdcInsn(RAW_INVOKER_METHOD_TYPE);
-      mv.visitLdcInsn(trampolineHandle);
-      mv.visitLdcInsn(INVOKER_METHOD_TYPE);
+            code.invokestatic(classDesc(LambdaMetafactory.class), "metafactory", METAFACTORY_TYPE);
 
-      mv.visitMethodInsn(
-          INVOKESTATIC,
-          "java/lang/invoke/LambdaMetafactory",
-          "metafactory",
-          METAFACTORY_DESCRIPTOR,
-          false);
+            code.invokevirtual(CD_CallSite, "getTarget", MethodTypeDesc.of(CD_MethodHandle));
 
-      mv.visitMethodInsn(
-          INVOKEVIRTUAL,
-          "java/lang/invoke/CallSite",
-          "getTarget",
-          "()Ljava/lang/invoke/MethodHandle;",
-          false);
+          } else {
+            // proxy class is hidden so we can't create our lambda glue, store raw trampoline instead
+            code.loadConstant(trampolineHandle);
+          }
 
-    } else {
-      // proxy class is hidden so we can't create our lambda glue, store raw trampoline instead
-      mv.visitLdcInsn(trampolineHandle);
-    }
+          code.putstatic(proxyType, INVOKERS_NAME, CD_MethodHandle);
 
-    mv.visitFieldInsn(PUTSTATIC, proxyName, INVOKERS_NAME, INVOKERS_DESCRIPTOR);
-
-    mv.visitInsn(RETURN);
-    mv.visitMaxs(0, 0);
-    mv.visitEnd();
+          code.return_();
+        });
   }
 
   /** Generate enhanced constructor that takes a handler array along with the expected arguments. */
-  private void enhanceConstructor(ClassWriter cw, Constructor<?> constructor) {
-    String descriptor = Type.getConstructorDescriptor(constructor);
-    String enhancedDescriptor = '(' + HANDLERS_DESCRIPTOR + descriptor.substring(1);
+  private void enhanceConstructor(ClassBuilder cb, Constructor<?> constructor) {
+    MethodTypeDesc type = methodType(constructor);
+    MethodTypeDesc enhancedType = type.insertParameterTypes(0, HANDLERS_TYPE);
 
-    MethodVisitor mv =
-        cw.visitMethod(PUBLIC, "<init>", enhancedDescriptor, null, exceptionNames(constructor));
+    cb.withMethod(
+        INIT_NAME,
+        enhancedType,
+        ACC_PUBLIC,
+        mb -> {
+          declareExceptions(mb, constructor);
+          mb.withCode(
+              code -> {
+                code.aload(0);
+                code.dup();
+                code.aload(1);
+                // store handlers before invoking the superclass constructor (JVM allows this)
+                code.putfield(proxyType, HANDLERS_NAME, HANDLERS_TYPE);
 
-    mv.visitCode();
+                int slot = 2;
+                for (Class<?> parameterType : constructor.getParameterTypes()) {
+                  slot += loadArgument(code, parameterType, slot);
+                }
 
-    mv.visitVarInsn(ALOAD, 0);
-    mv.visitInsn(DUP);
-    mv.visitVarInsn(ALOAD, 1);
-    // store handlers before invoking the superclass constructor (JVM allows this)
-    mv.visitFieldInsn(PUTFIELD, proxyName, HANDLERS_NAME, HANDLERS_DESCRIPTOR);
+                code.invokespecial(hostType, INIT_NAME, type);
 
-    int slot = 2;
-    for (Class<?> parameterType : constructor.getParameterTypes()) {
-      slot += loadArgument(mv, parameterType, slot);
-    }
-
-    mv.visitMethodInsn(INVOKESPECIAL, hostName, "<init>", descriptor, false);
-
-    mv.visitInsn(RETURN);
-    mv.visitMaxs(0, 0);
-    mv.visitEnd();
+                code.return_();
+              });
+        });
   }
 
   /** Generate enhanced method that calls the handler with the same index. */
-  private void enhanceMethod(ClassWriter cw, Method method, int methodIndex) {
-    MethodVisitor mv =
-        cw.visitMethod(
-            FINAL | (method.getModifiers() & ~(ABSTRACT | NATIVE | SYNCHRONIZED)),
-            method.getName(),
-            Type.getMethodDescriptor(method),
-            null,
-            exceptionNames(method));
+  private void enhanceMethod(ClassBuilder cb, Method method, int methodIndex) {
+    cb.withMethod(
+        method.getName(),
+        methodType(method),
+        ACC_FINAL | (method.getModifiers() & ~(ACC_ABSTRACT | ACC_NATIVE | ACC_SYNCHRONIZED)),
+        mb -> {
+          declareExceptions(mb, method);
+          mb.withCode(
+              code -> {
+                code.aload(0);
+                code.dup();
+                code.getfield(proxyType, HANDLERS_NAME, HANDLERS_TYPE);
+                code.loadConstant(methodIndex);
+                code.aaload();
+                code.swap();
+                // we don't use the method argument in InterceptorStackCallback.invoke, so can use
+                // null here
+                code.aconst_null();
+                packArguments(code, method.getParameterTypes());
 
-    mv.visitVarInsn(ALOAD, 0);
-    mv.visitInsn(DUP);
-    mv.visitFieldInsn(GETFIELD, proxyName, HANDLERS_NAME, HANDLERS_DESCRIPTOR);
-    pushInteger(mv, methodIndex);
-    mv.visitInsn(AALOAD);
-    mv.visitInsn(SWAP);
-    // we don't use the method argument in InterceptorStackCallback.invoke, so can use null here
-    mv.visitInsn(ACONST_NULL);
-    packArguments(mv, method.getParameterTypes());
+                code.invokeinterface(HANDLER_TYPE, "invoke", CALLBACK_TYPE);
 
-    mv.visitMethodInsn(INVOKEINTERFACE, HANDLER_TYPE, "invoke", CALLBACK_DESCRIPTOR, true);
-
-    Class<?> returnType = method.getReturnType();
-    if (returnType == void.class) {
-      mv.visitInsn(RETURN);
-    } else if (returnType.isPrimitive()) {
-      Type primitiveType = Type.getType(returnType);
-      unbox(mv, primitiveType);
-      mv.visitInsn(primitiveType.getOpcode(IRETURN));
-    } else {
-      mv.visitTypeInsn(CHECKCAST, Type.getInternalName(returnType));
-      mv.visitInsn(ARETURN);
-    }
-
-    mv.visitMaxs(0, 0);
-    mv.visitEnd();
+                Class<?> returnType = method.getReturnType();
+                if (returnType.isPrimitive()) {
+                  // void is a primitive too and TypeKind.VOID gives a plain return
+                  if (returnType != void.class) {
+                    unbox(code, returnType);
+                  }
+                } else {
+                  code.checkcast(classDesc(returnType));
+                }
+                code.return_(TypeKind.from(returnType));
+              });
+        });
   }
 
   @Override
-  protected void generateConstructorInvoker(MethodVisitor mv, Constructor<?> constructor) {
-    String descriptor = Type.getConstructorDescriptor(constructor);
-    String enhancedDescriptor = '(' + HANDLERS_DESCRIPTOR + descriptor.substring(1);
+  protected void generateConstructorInvoker(CodeBuilder code, Constructor<?> constructor) {
+    MethodTypeDesc enhancedType = methodType(constructor).insertParameterTypes(0, HANDLERS_TYPE);
 
-    mv.visitTypeInsn(NEW, proxyName);
-    mv.visitInsn(DUP);
+    code.new_(proxyType);
+    code.dup();
 
-    mv.visitVarInsn(ALOAD, 1);
-    mv.visitTypeInsn(CHECKCAST, HANDLER_ARRAY_TYPE);
-    unpackArguments(mv, constructor.getParameterTypes());
+    code.aload(1);
+    code.checkcast(HANDLERS_TYPE);
+    unpackArguments(code, constructor.getParameterTypes());
 
-    mv.visitMethodInsn(INVOKESPECIAL, proxyName, "<init>", enhancedDescriptor, false);
+    code.invokespecial(proxyType, INIT_NAME, enhancedType);
   }
 
   @Override
-  protected void generateMethodInvoker(MethodVisitor mv, Method method) {
+  protected void generateMethodInvoker(CodeBuilder code, Method method) {
     Method target = bridgeDelegates.getOrDefault(method, method);
+
+    code.aload(1);
+    code.checkcast(proxyType);
+    unpackArguments(code, target.getParameterTypes());
 
     // if this was a bridge method and we know the target then replace superclass delegation
     // with virtual dispatch to avoid skipping other interceptors overriding the target method
-    int invokeOpcode = target != method ? INVOKEVIRTUAL : INVOKESPECIAL;
-
-    mv.visitVarInsn(ALOAD, 1);
-    mv.visitTypeInsn(CHECKCAST, checkcastToProxy);
-    unpackArguments(mv, target.getParameterTypes());
-
-    mv.visitMethodInsn(
-        invokeOpcode, hostName, target.getName(), Type.getMethodDescriptor(target), false);
+    if (target != method) {
+      code.invokevirtual(hostType, target.getName(), methodType(target));
+    } else {
+      code.invokespecial(hostType, target.getName(), methodType(target));
+    }
 
     Class<?> returnType = target.getReturnType();
     if (returnType == void.class) {
-      mv.visitInsn(ACONST_NULL);
+      code.aconst_null();
     } else if (returnType.isPrimitive()) {
-      box(mv, Type.getType(returnType));
+      box(code, returnType);
     }
   }
 
   /** Override the original bridge method and replace it with virtual dispatch to the target. */
-  private void generateVirtualBridge(ClassWriter cw, Method bridge, Method target) {
-    MethodVisitor mv =
-        cw.visitMethod(
-            FINAL | (bridge.getModifiers() & ~(ABSTRACT | NATIVE | SYNCHRONIZED)),
-            bridge.getName(),
-            Type.getMethodDescriptor(bridge),
-            null,
-            exceptionNames(bridge));
+  private void generateVirtualBridge(ClassBuilder cb, Method bridge, Method target) {
+    cb.withMethod(
+        bridge.getName(),
+        methodType(bridge),
+        ACC_FINAL | (bridge.getModifiers() & ~(ACC_ABSTRACT | ACC_NATIVE | ACC_SYNCHRONIZED)),
+        mb -> {
+          declareExceptions(mb, bridge);
+          mb.withCode(
+              code -> {
+                code.aload(0);
+                code.checkcast(proxyType);
 
-    mv.visitVarInsn(ALOAD, 0);
-    mv.visitTypeInsn(CHECKCAST, checkcastToProxy);
+                Class<?>[] bridgeParameterTypes = bridge.getParameterTypes();
+                Class<?>[] targetParameterTypes = target.getParameterTypes();
 
-    Class<?>[] bridgeParameterTypes = bridge.getParameterTypes();
-    Class<?>[] targetParameterTypes = target.getParameterTypes();
+                int slot = 1;
+                for (int i = 0, len = targetParameterTypes.length; i < len; i++) {
+                  Class<?> parameterType = targetParameterTypes[i];
+                  slot += loadArgument(code, parameterType, slot);
+                  if (parameterType != bridgeParameterTypes[i]) {
+                    // cast incoming argument to the specific type expected by target
+                    code.checkcast(classDesc(parameterType));
+                  }
+                }
 
-    int slot = 1;
-    for (int i = 0, len = targetParameterTypes.length; i < len; i++) {
-      Class<?> parameterType = targetParameterTypes[i];
-      slot += loadArgument(mv, parameterType, slot);
-      if (parameterType != bridgeParameterTypes[i]) {
-        // cast incoming argument to the specific type expected by target
-        mv.visitTypeInsn(CHECKCAST, Type.getInternalName(parameterType));
-      }
-    }
+                code.invokevirtual(hostType, target.getName(), methodType(target));
 
-    mv.visitMethodInsn(
-        INVOKEVIRTUAL, hostName, target.getName(), Type.getMethodDescriptor(target), false);
-
-    Type returnType = Type.getType(bridge.getReturnType());
-    if (target.getReturnType() != bridge.getReturnType()) {
-      // cast return value to the specific type expected by bridge
-      mv.visitTypeInsn(CHECKCAST, returnType.getInternalName());
-    }
-    mv.visitInsn(returnType.getOpcode(IRETURN));
-
-    mv.visitMaxs(0, 0);
-    mv.visitEnd();
+                Class<?> returnType = bridge.getReturnType();
+                if (target.getReturnType() != returnType) {
+                  // cast return value to the specific type expected by bridge
+                  code.checkcast(classDesc(returnType));
+                }
+                code.return_(TypeKind.from(returnType));
+              });
+        });
   }
 
   @Override
@@ -413,11 +395,11 @@ final class Enhancer extends AbstractGlueGenerator {
     return (MethodHandle) glueClass.getField(INVOKERS_NAME).get(null);
   }
 
-  /** Returns internal names of exceptions declared by the given constructor/method. */
-  private static String[] exceptionNames(Executable member) {
-    Class<?>[] exceptionClasses = member.getExceptionTypes();
-    String[] exceptionNames = new String[exceptionClasses.length];
-    Arrays.setAll(exceptionNames, i -> Type.getInternalName(exceptionClasses[i]));
-    return exceptionNames;
+  /** Declares the exceptions thrown by the given constructor/method on the generated method. */
+  private static void declareExceptions(MethodBuilder mb, Executable member) {
+    List<ClassDesc> exceptions = exceptionTypes(member);
+    if (!exceptions.isEmpty()) {
+      mb.with(ExceptionsAttribute.ofSymbols(exceptions));
+    }
   }
 }

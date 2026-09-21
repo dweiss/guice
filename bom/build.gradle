@@ -1,0 +1,19 @@
+plugins {
+  id 'java-platform'
+}
+
+description = 'Guice (Carrot Search fork) - Bill of Materials'
+
+dependencies {
+  constraints {
+    // Only the modules that are actually published.
+    rootProject.subprojects
+        .findAll { it != project && it.pluginManager.hasPlugin('maven-publish') }
+        .each { api project(it.path) }
+  }
+}
+
+publishing.publications.create('bom', MavenPublication) {
+  from components.javaPlatform
+  artifactId = 'guice-jdk25-bom'
+}

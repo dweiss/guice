@@ -1,0 +1,2 @@
+description = 'Guice (Carrot Search fork) - Extensions - JNDI'
+ext.osgiModule = 'com.google.inject.jndi'

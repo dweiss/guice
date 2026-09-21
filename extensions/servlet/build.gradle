@@ -1,0 +1,7 @@
+description = 'Guice (Carrot Search fork) - Extensions - Servlet'
+ext.osgiModule = 'com.google.inject.servlet'
+
+dependencies {
+  provided libs.jakarta.servlet.api
+  testImplementation libs.mockito.core
+}

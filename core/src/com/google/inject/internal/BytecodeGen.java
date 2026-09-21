@@ -80,8 +80,8 @@ public final class BytecodeGen {
      * <p>This always includes public and protected methods that are neither static nor final.
      *
      * <p>Package-private methods can only be enhanced if they're in the same package as the host
-     * and we can define types in the same class loader with Unsafe. The {@link #finalize} method
-     * can never be enhanced.
+     * and the host's package is open to Guice, so we can define types in the same class loader.
+     * The {@link #finalize} method can never be enhanced.
      */
     Method[] getEnhanceableMethods();
 

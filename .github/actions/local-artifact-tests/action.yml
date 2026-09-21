@@ -1,5 +1,5 @@
 name: 'Local Artifact Tests'
-description: 'Runs local tests on the installed Guice LOCAL-SNAPSHOT artifacts.'
+description: 'Publishes Guice to the local Maven repository to check that publishing works.'
 
 runs:
   using: "composite"
@@ -9,24 +9,16 @@ runs:
       with:
         distribution: ${{ env.USE_JAVA_DISTRIBUTION }}
         java-version: ${{ env.USE_JAVA_VERSION }}
-    - name: 'Cache Maven files'
-      uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf
-      with:
-        path: ~/.m2/repository
-        key: ${{ runner.os }}-artifact-tests-${{ hashFiles('examples/**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-artifact-tests-
-    - name: 'Delete any stale artifacts from cache'
-      run: rm -rf ~/.m2/repository/com/google/inject
+        cache: gradle
+    - name: 'Delete any stale artifacts'
+      run: rm -rf ~/.m2/repository/com/carrotsearch/thirdparty/google/inject
       shell: bash
-    - name: 'Download local snapshot for tests'
-      uses: actions/download-artifact@v4
-      with:
-        name: local-snapshot
-        path: ~/.m2/repository/com/google/inject
-    - name: 'Maven Java local tests'
-      run: mvn -f examples/guice-demo/pom.xml verify -Dguice.version=LOCAL-SNAPSHOT --fail-at-end
+    - name: 'Publish to the local Maven repository'
+      run: ./gradlew publishToMavenLocal --console=plain
       shell: bash
-    - name: 'Clean up Maven cache'
-      run: rm -rf ~/.m2/repository/com/google/inject
+    - name: 'List the published artifacts'
+      run: find ~/.m2/repository/com/carrotsearch/thirdparty/google/inject -type f | sort
+      shell: bash
+    - name: 'Clean up'
+      run: rm -rf ~/.m2/repository/com/carrotsearch/thirdparty/google/inject
       shell: bash

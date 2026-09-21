@@ -1,0 +1,15 @@
+name: 'Gradle Build'
+description: 'Builds all artifacts and runs all tests using Gradle.'
+
+runs:
+  using: "composite"
+  steps:
+      - name: Set up JDK
+        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: ${{ env.USE_JAVA_DISTRIBUTION }}
+          cache: gradle
+      - name: Build with Gradle
+        run: ./gradlew build --console=plain
+        shell: bash

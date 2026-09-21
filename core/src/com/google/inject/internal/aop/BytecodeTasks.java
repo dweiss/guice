@@ -16,21 +16,17 @@
 
 package com.google.inject.internal.aop;
 
-import static org.objectweb.asm.Opcodes.AALOAD;
-import static org.objectweb.asm.Opcodes.AASTORE;
-import static org.objectweb.asm.Opcodes.ALOAD;
-import static org.objectweb.asm.Opcodes.ANEWARRAY;
-import static org.objectweb.asm.Opcodes.BIPUSH;
-import static org.objectweb.asm.Opcodes.CHECKCAST;
-import static org.objectweb.asm.Opcodes.DUP;
-import static org.objectweb.asm.Opcodes.ICONST_0;
-import static org.objectweb.asm.Opcodes.ILOAD;
-import static org.objectweb.asm.Opcodes.INVOKESTATIC;
-import static org.objectweb.asm.Opcodes.INVOKEVIRTUAL;
-import static org.objectweb.asm.Opcodes.SIPUSH;
+import static java.lang.constant.ConstantDescs.CD_Object;
 
-import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Type;
+import java.lang.classfile.CodeBuilder;
+import java.lang.classfile.TypeKind;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.MethodTypeDesc;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.Executable;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Utility methods to generate common bytecode tasks.
@@ -40,163 +36,79 @@ import org.objectweb.asm.Type;
 final class BytecodeTasks {
   private BytecodeTasks() {}
 
-  /** Pushes an integer onto the stack, choosing the most efficient opcode. */
-  public static void pushInteger(MethodVisitor mv, int value) {
-    if (value < -1) {
-      mv.visitLdcInsn(value);
-    } else if (value <= 5) {
-      mv.visitInsn(ICONST_0 + value);
-    } else if (value <= Byte.MAX_VALUE) {
-      mv.visitIntInsn(BIPUSH, value);
-    } else if (value <= Short.MAX_VALUE) {
-      mv.visitIntInsn(SIPUSH, value);
-    } else {
-      mv.visitLdcInsn(value);
-    }
+  /** Returns the symbolic descriptor of the given class. */
+  public static ClassDesc classDesc(Class<?> type) {
+    return ClassDesc.ofDescriptor(type.descriptorString());
+  }
+
+  /** Returns the symbolic descriptor of the given constructor/method. */
+  public static MethodTypeDesc methodType(Executable member) {
+    Class<?> returnType = member instanceof Method method ? method.getReturnType() : void.class;
+    return MethodTypeDesc.ofDescriptor(
+        MethodType.methodType(returnType, member.getParameterTypes()).descriptorString());
+  }
+
+  /** Returns the symbolic descriptors of the exceptions declared by the given constructor/method. */
+  public static List<ClassDesc> exceptionTypes(Executable member) {
+    return Arrays.stream(member.getExceptionTypes()).map(BytecodeTasks::classDesc).toList();
   }
 
   /** Packs local arguments into an argument array on the Java stack. */
-  public static void packArguments(MethodVisitor mv, Class<?>[] parameterTypes) {
-    pushInteger(mv, parameterTypes.length);
-    mv.visitTypeInsn(ANEWARRAY, "java/lang/Object");
+  public static void packArguments(CodeBuilder code, Class<?>[] parameterTypes) {
+    code.loadConstant(parameterTypes.length);
+    code.anewarray(CD_Object);
     int parameterIndex = 0;
     int slot = 1;
     for (Class<?> parameterType : parameterTypes) {
-      mv.visitInsn(DUP);
-      pushInteger(mv, parameterIndex++);
-      slot += loadArgument(mv, parameterType, slot);
+      code.dup();
+      code.loadConstant(parameterIndex++);
+      slot += loadArgument(code, parameterType, slot);
       if (parameterType.isPrimitive()) {
-        box(mv, Type.getType(parameterType));
+        box(code, parameterType);
       }
-      mv.visitInsn(AASTORE);
+      code.aastore();
     }
   }
 
   /** Unpacks an array of arguments and pushes them onto the Java stack. */
-  public static void unpackArguments(MethodVisitor mv, Class<?>[] parameterTypes) {
+  public static void unpackArguments(CodeBuilder code, Class<?>[] parameterTypes) {
     int parameterIndex = 0;
     for (Class<?> parameterType : parameterTypes) {
       // invoker pattern means we can safely assume array is the second local argument
-      mv.visitVarInsn(ALOAD, 2);
-      pushInteger(mv, parameterIndex++);
-      mv.visitInsn(AALOAD);
+      code.aload(2);
+      code.loadConstant(parameterIndex++);
+      code.aaload();
       if (parameterType.isPrimitive()) {
-        unbox(mv, Type.getType(parameterType));
+        unbox(code, parameterType);
       } else {
-        mv.visitTypeInsn(CHECKCAST, Type.getInternalName(parameterType));
+        code.checkcast(classDesc(parameterType));
       }
     }
   }
 
   /** Loads a local argument onto the Java stack and returns the size of the argument. */
-  public static int loadArgument(MethodVisitor mv, Class<?> parameterType, int slot) {
-    if (!parameterType.isPrimitive()) {
-      mv.visitVarInsn(ALOAD, slot);
-      return 1;
-    }
-
-    Type primitiveType = Type.getType(parameterType);
-    mv.visitVarInsn(primitiveType.getOpcode(ILOAD), slot);
-    return primitiveType.getSize();
+  public static int loadArgument(CodeBuilder code, Class<?> parameterType, int slot) {
+    TypeKind kind = TypeKind.from(parameterType);
+    code.loadLocal(kind, slot);
+    return kind.slotSize();
   }
 
   /** Boxes a primitive value on the Java stack. */
-  public static void box(MethodVisitor mv, Type primitiveType) {
-    String wrapper;
-    String descriptor;
-
-    switch (primitiveType.getSort()) {
-      case Type.BOOLEAN:
-        wrapper = "java/lang/Boolean";
-        descriptor = "(Z)Ljava/lang/Boolean;";
-        break;
-      case Type.CHAR:
-        wrapper = "java/lang/Character";
-        descriptor = "(C)Ljava/lang/Character;";
-        break;
-      case Type.BYTE:
-        wrapper = "java/lang/Byte";
-        descriptor = "(B)Ljava/lang/Byte;";
-        break;
-      case Type.SHORT:
-        wrapper = "java/lang/Short";
-        descriptor = "(S)Ljava/lang/Short;";
-        break;
-      case Type.INT:
-        wrapper = "java/lang/Integer";
-        descriptor = "(I)Ljava/lang/Integer;";
-        break;
-      case Type.FLOAT:
-        wrapper = "java/lang/Float";
-        descriptor = "(F)Ljava/lang/Float;";
-        break;
-      case Type.LONG:
-        wrapper = "java/lang/Long";
-        descriptor = "(J)Ljava/lang/Long;";
-        break;
-      case Type.DOUBLE:
-        wrapper = "java/lang/Double";
-        descriptor = "(D)Ljava/lang/Double;";
-        break;
-      default:
-        return;
-    }
-
-    mv.visitMethodInsn(INVOKESTATIC, wrapper, "valueOf", descriptor, false);
+  public static void box(CodeBuilder code, Class<?> primitiveType) {
+    ClassDesc wrapper = wrapper(primitiveType);
+    code.invokestatic(wrapper, "valueOf", MethodTypeDesc.of(wrapper, classDesc(primitiveType)));
   }
 
   /** Unboxes a boxed value on the Java stack. */
-  public static void unbox(MethodVisitor mv, Type primitiveType) {
-    String wrapper;
-    String method;
-    String descriptor;
+  public static void unbox(CodeBuilder code, Class<?> primitiveType) {
+    ClassDesc wrapper = wrapper(primitiveType);
+    code.checkcast(wrapper);
+    code.invokevirtual(
+        wrapper, primitiveType.getName() + "Value", MethodTypeDesc.of(classDesc(primitiveType)));
+  }
 
-    switch (primitiveType.getSort()) {
-      case Type.BOOLEAN:
-        wrapper = "java/lang/Boolean";
-        method = "booleanValue";
-        descriptor = "()Z";
-        break;
-      case Type.CHAR:
-        wrapper = "java/lang/Character";
-        method = "charValue";
-        descriptor = "()C";
-        break;
-      case Type.BYTE:
-        wrapper = "java/lang/Byte";
-        method = "byteValue";
-        descriptor = "()B";
-        break;
-      case Type.SHORT:
-        wrapper = "java/lang/Short";
-        method = "shortValue";
-        descriptor = "()S";
-        break;
-      case Type.INT:
-        wrapper = "java/lang/Integer";
-        method = "intValue";
-        descriptor = "()I";
-        break;
-      case Type.FLOAT:
-        wrapper = "java/lang/Float";
-        method = "floatValue";
-        descriptor = "()F";
-        break;
-      case Type.LONG:
-        wrapper = "java/lang/Long";
-        method = "longValue";
-        descriptor = "()J";
-        break;
-      case Type.DOUBLE:
-        wrapper = "java/lang/Double";
-        method = "doubleValue";
-        descriptor = "()D";
-        break;
-      default:
-        return;
-    }
-
-    mv.visitTypeInsn(CHECKCAST, wrapper);
-    mv.visitMethodInsn(INVOKEVIRTUAL, wrapper, method, descriptor, false);
+  /** Returns the symbolic descriptor of the wrapper class for the given primitive type. */
+  private static ClassDesc wrapper(Class<?> primitiveType) {
+    return classDesc(MethodType.methodType(primitiveType).wrap().returnType());
   }
 }

@@ -1,6 +1,13 @@
 Guice
 ====
 
+> **This is a fork.** It targets JDK 25+, builds with Gradle and is published as
+> `com.carrotsearch.thirdparty.google.inject:guice-jdk25` (plus `guice-jdk25-bom`); Java packages are unchanged.
+> See [README-fork.md](README-fork.md) for the differences. The text below is upstream's and its
+> links, releases and coordinates refer to [google/guice](https://github.com/google/guice).
+>
+> [![Build Status](https://github.com/dweiss/guice/workflows/continuous-integration/badge.svg)](https://github.com/dweiss/guice/actions)
+
 -   **Latest releases:**
     * **[6.0.0](https://github.com/google/guice/wiki/Guice600) (supports `javax.{inject,servlet,persistence}`, [mostly supports](https://github.com/google/guice/wiki/Guice600#jee-jakarta-transition) `jakarta.inject`)**
     * **[7.0.0](https://github.com/google/guice/wiki/Guice700) (supports `jakarta.{inject,servlet,persistence}`)**

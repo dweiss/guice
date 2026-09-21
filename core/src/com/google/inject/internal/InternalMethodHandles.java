@@ -176,7 +176,7 @@ public final class InternalMethodHandles {
     }
     try {
       method.setAccessible(true);
-    } catch (SecurityException | InaccessibleObjectException e) {
+    } catch (InaccessibleObjectException e) {
       return null;
     }
     try {
@@ -212,7 +212,7 @@ public final class InternalMethodHandles {
     }
     try {
       ctor.setAccessible(true);
-    } catch (SecurityException | InaccessibleObjectException e) {
+    } catch (InaccessibleObjectException e) {
       return null;
     }
     try {
@@ -230,7 +230,7 @@ public final class InternalMethodHandles {
   static MethodHandle unreflectSetter(Field field) {
     try {
       field.setAccessible(true);
-    } catch (SecurityException | InaccessibleObjectException e) {
+    } catch (InaccessibleObjectException e) {
       return null;
     }
     try {
@@ -801,19 +801,6 @@ public final class InternalMethodHandles {
           "tryStartConstruction",
           methodType(Object.class, int.class, Dependency.class));
 
-  /**
-   * Drops the return value from a method handle.
-   *
-   * <p>TODO(lukes): once guice is on jdk16+ we can use MEthodHandles.dropReturn directly.
-   */
-  static MethodHandle dropReturn(MethodHandle handle) {
-    if (handle.type().returnType().equals(void.class)) {
-      return handle;
-    }
-    return MethodHandles.filterReturnValue(
-        handle, MethodHandles.empty(methodType(void.class, handle.type().returnType())));
-  }
-
   private static final MethodHandle IS_NULL_HANDLE =
       findStaticOrDie(
           InternalMethodHandles.class, "isNull", methodType(boolean.class, Object.class));
@@ -1108,7 +1095,7 @@ public final class InternalMethodHandles {
       // We are basically creating 2 methods in a chain that add to the builder
       // We do this by calling `doAddToImmutableSet` recursively.
       return MethodHandles.foldArguments(
-          doAddToImmutableSet(right), dropReturn(doAddToImmutableSet(left)));
+          doAddToImmutableSet(right), MethodHandles.dropReturn(doAddToImmutableSet(left)));
     }
   }
 
@@ -1252,7 +1239,7 @@ public final class InternalMethodHandles {
       int half = size / 2;
       return MethodHandles.foldArguments(
           doPutEntries(entries.subList(half, size)),
-          dropReturn(doPutEntries(entries.subList(0, half))));
+          MethodHandles.dropReturn(doPutEntries(entries.subList(0, half))));
     }
   }
 
