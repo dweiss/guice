@@ -13,6 +13,7 @@ dependencies {
   }
 }
 
-publishing.publications.maven {
+publishing.publications.create('bom', MavenPublication) {
   from components.javaPlatform
+  artifactId = 'guice-jdk25-bom'
 }

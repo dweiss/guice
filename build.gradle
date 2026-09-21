@@ -13,6 +13,14 @@ buildscript {
   }
 }
 
+plugins {
+  // Only the Maven Central publishing plugin is used (applied by class below), not the conventions.
+  alias(libs.plugins.buildinfra) apply false
+}
+
+// Configured further down, see mavenCentralPublishing.
+apply plugin: com.carrotsearch.gradle.buildinfra.publishing.mavencentral.MavenCentralPublishingPlugin
+
 // Captured here so the closures below don't look it up through the parent project.
 def libs = extensions.libs
 
@@ -66,73 +74,67 @@ def javadocOptions = { StandardJavadocDocletOptions options ->
 def javaProjects = subprojects.findAll { !(it.name in ['guice-bom', 'guice-demo']) }
 def extensionProjects = javaProjects.findAll { it.projectDir.parentFile.name == 'extensions' }
 // Only these modules are published for now; the extensions are built and tested but not released.
-def publishedProjects = subprojects.findAll { it.name in ['guice', 'guice-bom'] }
+def publishedProjects = [':guice', ':guice-bom']
 
 subprojects {
   group = 'com.carrotsearch.thirdparty.google.inject'
 }
 
-configure(publishedProjects) {
-  apply plugin: 'maven-publish'
+// Publishing to Maven Central (via Sonatype's Central Portal): a bundle upload for releases, the
+// snapshot repository for snapshots.
+//
+//   ./gradlew publishToMavenCentral
+//
+// 'publishLocal' and 'prepareMavenCentralBundle' can be used to inspect what would be published
+// (build/maven, build/maven-bundle). The plugin creates the 'jars' publication of java projects.
+mavenCentralPublishing {
+  bundleName = 'guice-jdk25'
 
-  publishing {
-    publications {
-      maven(MavenPublication) {
-        it.artifactId = artifactId(project)
-        pom {
-          name = provider { project.description }
-          description = guiceDescription
-          url = "https://${forkRepository}"
-          inceptionYear = '2006'
-          organization {
-            name = 'Google, Inc.'
-            url = 'http://www.google.com'
-          }
-          licenses {
-            license {
-              name = 'The Apache Software License, Version 2.0'
-              url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-              distribution = 'repo'
-            }
-          }
-          scm {
-            connection = "scm:git:https://${forkRepository}.git"
-            developerConnection = "scm:git:ssh://git@${forkRepository}.git"
-            url = "https://${forkRepository}"
-          }
-          issueManagement {
-            system = 'Github'
-            url = "https://${forkRepository}/issues/"
-          }
-          ciManagement {
-            system = 'GitHub Actions'
-            url = "https://${forkRepository}/actions"
-          }
-        }
+  // Publish only poms and jars, like the Maven build did.
+  gradleModuleMetadata = false
+
+  pom {
+    description = guiceDescription
+    url = "https://${forkRepository}"
+    inceptionYear = '2006'
+    organization {
+      name = 'Google, Inc.'
+      url = 'http://www.google.com'
+    }
+    licenses {
+      license {
+        name = 'The Apache Software License, Version 2.0'
+        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+        distribution = 'repo'
       }
     }
-    repositories {
-      maven {
-        name = 'sonatype'
-        url = version.endsWith('-SNAPSHOT')
-            ? 'https://oss.sonatype.org/content/repositories/snapshots'
-            : 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
-        credentials {
-          username = System.getenv('MAVEN_USERNAME')
-          password = System.getenv('MAVEN_PASSWORD')
-        }
+    developers {
+      developer {
+        id = 'dawid.weiss'
+        name = 'Dawid Weiss'
+        email = 'dawid.weiss@carrotsearch.com'
       }
+    }
+    scm {
+      connection = "scm:git:https://${forkRepository}.git"
+      developerConnection = "scm:git:ssh://git@${forkRepository}.git"
+      url = "https://${forkRepository}"
+    }
+    issueManagement {
+      system = 'Github'
+      url = "https://${forkRepository}/issues/"
+    }
+    ciManagement {
+      system = 'GitHub Actions'
+      url = "https://${forkRepository}/actions"
     }
   }
-  // Publish only poms and jars, like the Maven build did.
-  tasks.withType(GenerateModuleMetadata).configureEach { enabled = false }
 
-  // Sign with gpg when a key is configured, e.g. -Psigning.gnupg.keyName=<key id>.
-  if (findProperty('signing.gnupg.keyName')) {
-    apply plugin: 'signing'
-    signing {
-      useGpgCmd()
-      sign publishing.publications
+  publishedProjects.each { path ->
+    project(path) {
+      pom {
+        name = rootProject.project(path).description
+      }
     }
   }
 }
@@ -370,8 +372,7 @@ configure(javaProjects) {
   }
 
   pluginManager.withPlugin('maven-publish') {
-    publishing.publications.maven {
-      from components.java
+    publishing.publications.jars {
       artifact testJar
       artifact testSourcesJar
       pom.withXml {

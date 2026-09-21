@@ -21,7 +21,13 @@ This branch diverges from upstream Guice in the following ways.
   - `./gradlew publishToMavenLocal` installs the published artifacts locally.
   - `examples/guice-demo` is part of the build (`:guice-demo`); its upstream `com.google.inject`
     coordinates are substituted with the local projects.
-  - `./gradlew aggregateJavadoc` produces the combined API docs; `./gradlew publish` deploys.
+  - `./gradlew aggregateJavadoc` produces the combined API docs.
+- Publishing uses the Maven Central plugin from Carrot Search's buildinfra (only that plugin, none
+  of its conventions): `./gradlew publishToMavenCentral` uploads a signed bundle to Sonatype's
+  Central Portal for releases and deploys to the snapshot repository for snapshots.
+  `publishLocal` and `prepareMavenCentralBundle` show what would be published (`build/maven`,
+  `build/maven-bundle`). Credentials are the `mavenCentralUsername`/`mavenCentralPassword` gradle
+  properties; releases require a signing key and a clean git checkout.
 - Artifacts (jars, sources, test jars, manifests, poms) match what Maven produced, except:
   `META-INF/DEPENDENCIES` is not generated, test-scoped dependencies are not listed in poms,
   javadoc jars carry no timestamps, and the jdiff API reports are no longer published.
